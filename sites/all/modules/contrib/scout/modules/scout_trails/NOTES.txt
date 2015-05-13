@@ -1,0 +1,42 @@
+Some notes on other module support and/or alternative approaches to custom entity handling.
+
+
+Entityconnect is supposed to provide add and edit buttons to the autocomplete selection, but doesn't appear to be working for Scout.  Could be because this module is using a generic permission handling (Admin Scout Tours) instead of individual create/edit/delete type permissions per entity type.
+
+Checkout Entity Operations - https://drupal.org/project/entity_operations   /  https://drupal.org/node/1919442.  Might promote faster building of custom entity UI's.
+
+Checkout Replicate - https://drupal.org/project/replicate  / 
+
+Checkout Entity Construction Kit (ECK) - https://drupal.org/project/eck
+
+
+
+References:
+
+Providing a new entity type - https://drupal.org/node/878804
+
+Creating Your Own Entities with entities API -  http://www.trellon.com/content/blog/creating-own-entities-entity-api
+
+Entity API Tutorial - https://drupal.org/node/878784
+
+DrupalContrib Entity : includes support for update path to D8 (Entity in Core) - http://drupalcontrib.org/api/drupal/contributions%21entity%21includes%21entity.inc/class/Entity/7
+
+DrupalContrib EntityAPIController - http://drupalcontrib.org/api/drupal/contributions%21entity%21includes%21entity.controller.inc/class/EntityAPIController/7
+
+DrupalContrib EntityDefaultUIController - http://drupalcontrib.org/api/drupal/contributions%21entity%21includes%21entity.ui.inc/class/EntityDefaultUIController/7
+
+Writing custom Entity Operation handlers - https://drupal.org/node/1970002
+
+Field Attach API - https://api.drupal.org/api/drupal/modules%21field%21field.attach.inc/group/field_attach/7
+
+function field_attach_form - https://api.drupal.org/api/drupal/modules%21field%21field.attach.inc/function/field_attach_form/7
+function field_attach_validate - https://api.drupal.org/api/drupal/modules%21field%21field.attach.inc/function/field_attach_validate/7
+function field_attach_update - https://api.drupal.org/api/drupal/modules%21field%21field.attach.inc/function/field_attach_update/7
+
+Customise entity reference autocomplete - http://drupal.stackexchange.com/questions/78793/customise-entity-reference-autocomplete
+
+Override entityreference autocomplete and return entityfieldquery output - http://drupal.stackexchange.com/questions/82165/override-entityreference-autocomplete-and-return-entityfieldquery-output
+
+Making entities exportable - https://drupal.org/node/1021526
+
+Why use Entity Metadata - http://wolfgangziegler.net/introducing_entity_metadata

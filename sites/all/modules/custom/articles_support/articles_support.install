@@ -1,0 +1,12 @@
+<?php
+/*
+ * @file articles_support.install
+ */
+
+/**
+ * Implements hook_install().
+ */
+function articles_support_install() {
+  // Make sure that colorbox load is enabled.
+  variable_set('colorbox_load', 1);
+}

@@ -1,0 +1,21 @@
+@CHARSET "UTF-8";
+
+.-experiment-subform {
+	width: 50%;
+}
+
+.-experiment-subform .form-item {
+	width: 50%;
+}
+
+.-experiment-subform .form-item .description {
+	width: 100%;
+}
+.-experiment-subform > .form-item:first-child {
+	float:right;
+}
+
+.ga-events-ui-subform {
+    border: 1px solid black;
+    padding: 10px;
+}

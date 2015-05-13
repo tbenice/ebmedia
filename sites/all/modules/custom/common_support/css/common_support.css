@@ -1,0 +1,13 @@
+/*--------------------------------------
+
+ hide-show via js
+
+--------------------------------------*/
+.item-hide {
+    overflow: hidden;
+    display: block;
+}
+.item-shown {
+    overflow: visible !important;
+    height: auto !important;
+}

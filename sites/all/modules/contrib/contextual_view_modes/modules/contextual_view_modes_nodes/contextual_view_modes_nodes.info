@@ -1,0 +1,15 @@
+name = Contextual View Modes Nodes
+description = Provides the UI for contextual view modes node authoring.
+package = Contextual View Modes
+version = "7.x-2.x"
+core = 7.x
+
+dependencies[] = "node"
+dependencies[] = "contextual_view_modes"
+
+; Information added by Drupal.org packaging script on 2015-02-23
+version = "7.x-2.x-dev"
+core = "7.x"
+project = "contextual_view_modes"
+datestamp = "1424709249"
+

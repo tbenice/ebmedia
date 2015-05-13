@@ -1,0 +1,6 @@
+name = Animate Support
+description = Supporting components animate.css and wow.js
+core = 7.x
+package = BTW
+scripts[] = js/wow.min.js
+stylesheets[screen and (min-width: 40.063em)][] = css/animate/animate.css

@@ -1,0 +1,885 @@
+<?php
+/**
+ * @file
+ * Code for the Scout Trails feature.
+ */
+
+	include_once 'scout_trails.features.inc';
+
+	// These four includes sometimes throw "Deprecated function: Call-time pass-by-reference has been deprecated in include_once()"
+	// depending on PHP version,
+	// but they don't work at all if removed, relying only on project info file to load them.
+	include_once 'inc/scout_trails.tips.admin.inc';
+	include_once 'inc/scout_trails.trails.admin.inc';
+	include_once 'inc/scout_trails.pages.inc';
+	include_once 'inc/scout_trails.controllers.inc';
+
+/**
+ * Implements hook_theme().
+ * Register a module (or theme's) theme implementations.
+ *
+ * @see http://api.drupalize.me/api/drupal/function/hook_theme/7
+ */
+function scout_trails_theme($existing, $type, $theme, $path) {
+  return array(
+    'scout_trails_help' => array(
+      'variables' => array(),
+      'template' => 'templates/scout_trails-help',
+    ),
+  );
+}
+
+/**
+ * Implements hook_help().
+ *
+ * @see http://api.drupalize.me/api/drupal/function/hook_help/7
+ */
+function scout_trails_help($path, $arg) {
+  switch ($path) {
+    case 'admin/help#scout_trails':
+      return theme('scout_trails_help');
+  }
+}
+
+/**
+ * Implements hook_entity_info().
+ *
+ */
+function scout_trails_entity_info() {
+  // Scout trail entities (trails) consist of related scout tip entities.
+  $return['scout_trail'] = array(
+    'label' => t('Scout Trail'),
+    'plural label' => t('Scout Trails'),
+    'description' => t('An entity type consisting of multiple scout_tip entities.'),
+    'entity class' => 'ScoutTrail',
+    'controller class' => 'ScoutTrailController',
+    'base table' => 'scout_trail',
+    'fieldable' => TRUE,
+    'exportable' => TRUE,
+    'entity keys' => array(
+      'id'     => 'trail_id',
+      'bundle' => 'type',
+      'label'  => 'title',
+    ),
+    'bundle keys' => array(
+      'bundle' => 'type',
+    ),
+    'bundles' => array(),
+    'view modes' => array(
+      'full' => array(
+        'label' => t('Default'),
+        'custom settings' => FALSE,
+      ),
+    ),
+    'load hook' => 'scout_trail_load',
+    'uri callback' => 'entity_class_uri',
+    'label callback' => 'entity_class_label',
+//    'creation callback' => 'scout_trail_create', // Don't define, use controller default.
+    'access callback' => 'scout_trails_access',
+    'module' => 'scout_trails',
+    // The information below is used by the ScoutTrailUIController (which extends the EntityDefaultUIController)
+    'views controller class' => 'EntityDefaultViewsController',
+    // Enable the entity API's admin UI.
+    'admin ui' => array(
+      'path' => 'admin/content/scout-trails',
+      'file' => 'inc/scout_trails.controllers.inc',
+      'controller class' => 'ScoutTrailUIController',
+      'menu wildcard' => '%scout_trail',
+    ),
+  );
+  // The entity that holds information about the default Scout Trail type
+  $return['scout_trail_type'] = array(
+    'label' => t('Scout Trail Type'),
+    'entity class' => 'ScoutTrailType',
+    'controller class' => 'ScoutTrailTypeController',
+    'base table' => 'scout_trail_type',
+    'fieldable' => FALSE,
+    'bundle of' => 'scout_trail',
+    'exportable' => TRUE,
+    'entity keys' => array(
+      'id' => 'id',
+      'name' => 'type',
+      'label' => 'label',
+    ),
+    'access callback' => 'scout_trails_type_access',
+    'module' => 'scout_trails',
+    // Enable the entity API's admin UI.
+    // Really no reason for this UI for end users because we don't want them changing fields or adding new types.
+    // It is handy, though.  Keeping for further development, only.
+/*
+    'admin ui' => array(
+      'path' => 'admin/structure/scout/scout-trail-types',
+      'file' => 'inc/scout_trails.controllers.inc',
+      'controller class' => 'ScoutTrailTypeUIController',
+    ),
+*/
+  );
+
+  // Scout tip entities - Scout Trails are collections of these entities (supports joyride tour tips).
+  $return['scout_tip'] = array(
+    'label' => t('Scout Tip'),
+    'plural label' => t('Scout Tips'),
+    'description' => t('An entity type consisting of page navigational aids used by joyride jquery.'),
+    'entity class' => 'ScoutTip',
+    'controller class' => 'ScoutTipController',
+    'base table' => 'scout_tip',
+    'fieldable' => TRUE,
+    'exportable' => TRUE,
+    'entity keys' => array(
+      'id' => 'tip_id',
+      'bundle' => 'type',
+      'label' => 'title',
+     ),
+    'bundle keys' => array(
+      'bundle' => 'type',
+    ),
+    'bundles' => array(),
+    'load hook' => 'scout_tip_load',
+    'uri callback' => 'entity_class_uri',
+    'label callback' => 'entity_class_label',
+//    'creation callback' => 'scout_trail_create', // Don't define, use controller default.
+    'access callback' => 'scout_trails_access',
+    'module' => 'scout_trails',
+    // The information below is used by the ScoutTipUIController (which extends the EntityDefaultUIController)
+    'views controller class' => 'EntityDefaultViewsController',
+    // Enable the entity API's admin UI.
+    'admin ui' => array(
+      // It's no mistake that the admin ui path is nearly the same as the
+      // the one for trails.  The tips are the components of those trails
+      // so their admin tasks are closely entwined.
+      'path' => 'admin/content/scout-trails/scout-tips',
+      'file' => 'inc/scout_trails.controllers.inc',
+      'controller class' => 'ScoutTipUIController',
+      'menu wildcard' => '%scout_tip',
+    ),
+  );
+
+  // The entity that holds information about the default Scout Tip type
+  $return['scout_tip_type'] = array(
+    'label' => t('Scout Tip Type'),
+    'entity class' => 'ScoutTipType',
+    'controller class' => 'EntityAPIControllerExportable',
+    'base table' => 'scout_tip_type',
+    'fieldable' => TRUE,
+    'bundle of' => 'scout_tip',
+    'exportable' => TRUE,
+    'entity keys' => array(
+      'id' => 'id',
+      'name' => 'type',
+      'label' => 'label',
+    ),
+    'access callback' => 'scout_trails_type_access',
+    'module' => 'scout_trails',
+    // Enable the entity API's admin UI.
+    // Really no reason for this UI for end users because we don't want them changing fields or adding new types.
+    // It is handy, though.  Keeping for further development, only.
+/*
+    'admin ui' => array(
+      'path' => 'admin/structure/scout/scout-tip-types',
+      'file' => 'inc/scout_trails.controllers.inc',
+      'controller class' => 'ScoutTipTypeUIController',
+    ),
+*/
+  );
+
+  // Support entity cache module.
+  if (module_exists('entitycache')) {
+    $return['scout_trail']['field cache'] = FALSE;
+    $return['scout_trail']['entity cache'] = TRUE;
+    $return['scout_trail_type']['field cache'] = FALSE;
+    $return['scout_trail_type']['entity cache'] = TRUE;
+    $return['scout_tip']['field cache'] = FALSE;
+    $return['scout_tip']['entity cache'] = TRUE;
+    $return['scout_tip_type']['field cache'] = FALSE;
+    $return['scout_tip_type']['entity cache'] = TRUE;
+  }
+//  dsm($return,'scout_trails_entity_info');
+//  dsm($return['scout_trail']['entity class'],'entity class');
+
+  return $return;
+}
+
+/**
+* Implements hook_entity_info_alter().
+*/
+function scout_trails_entity_info_alter(&$entity_info) {
+  foreach (scout_trail_types() as $type => $info) {
+    $entity_info['scout_trail']['bundles'][$type] = array(
+      'label' => $info->label,
+      'admin' => array(
+        'path' => 'admin/structure/scout/scout-trail-types/manage/%scout_trail_type',
+        'real path' => 'admin/structure/scout/scout-trail-types/manage/' . $type,
+        'bundle argument' => 5,
+        'access arguments' => array('admin scout trails'),
+      ),
+    );
+  }
+
+  foreach (scout_tip_types() as $type => $info) {
+    $entity_info['scout_tip']['bundles'][$type] = array(
+      'label' => $info->label,
+      'admin' => array(
+        'path' => 'admin/structure/scout/scout-tip-types/manage/%scout_tip_type',
+        'real path' => 'admin/structure/scout/scout-tip-types/manage/' . $type,
+        'bundle argument' => 5,
+        'access arguments' => array('admin scout trails'),
+      ),
+    );
+  }
+
+  // Add support for inline entity forms
+  if (isset($entity_info['scout_tip'])) {
+    $entity_info['scout_tip']['inline entity form'] = array(
+      'controller' => 'ScoutInlineEntityFormController',
+    );
+  }
+
+  if (isset($entity_info['scout_trail'])) {
+    $entity_info['scout_trail']['inline entity form'] = array(
+      'controller' => 'EntityInlineEntityFormController',
+    );
+  }
+
+}
+
+/**
+ * Implements hook_menu().
+ */
+function scout_trails_menu() {
+  $items = array();
+
+  // Autocomplete callback for tagging a Scout Trail.
+  $items['admin/content/scout-trails/ajax/tag'] = array(
+    'page callback' => 'scout_trails_ui_autocomplete_tag',
+    'access arguments' => array('admin scout trails'),
+    'type' => MENU_CALLBACK,
+    'file' => 'inc/scout_trails.trails.admin.inc',
+  );
+
+  // Autocomplete callback for tagging a Scout Tip.
+  $items['admin/content/scout-trails/scout-tips/ajax/tag'] = array(
+    'page callback' => 'scout_tips_ui_autocomplete_tag',
+    'access arguments' => array('admin scout trails'),
+    'type' => MENU_CALLBACK,
+    'file' => 'inc/scout_trails.tips.admin.inc',
+  );
+
+//  $scout_trails_uri = 'admin/content/scout-trails';
+//  $scout_trails_uri_argument_position = 4;
+
+  foreach (scout_trail_types() as $type => $info) {
+   $items['admin/structure/scout/scout-trail-types/%scout_trail_type/delete'] = array(
+    'title' => 'Delete',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('scout_trail_type_form_delete_confirm', 4),
+    'access arguments' => array('admin scout trails'),
+    'weight' => 1,
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'inc/scout_trails.trails.admin.inc',
+  );
+
+   $items['admin/structure/scout/scout-tip-types/%scout_tip_type/delete'] = array(
+    'title' => 'Delete',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('scout_tip_type_form_delete_confirm', 4),
+    'access arguments' => array('admin scout trails'),
+    'weight' => 1,
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'inc/scout_trails.tips.admin.inc',
+  );
+
+  }
+  
+//  dsm($items,'$items');
+
+  return $items;
+}
+
+/**
+ * implements hook_permission
+ *
+ */
+function scout_trails_permission() {
+  // We set up permisssions to manage entity types, manage all entities and the
+  // permissions for each individual entity
+  $permissions = array(
+    'admin scout trails' => array(
+      'title' => t('Administer Scout Trails'),
+      'description' => t('Administer (create, update, delete) Scout trails and scout tips.'),
+      'restrict access' => TRUE,
+    ),
+    'access scout trails' => array(
+      'title' => t('Access Scout Trails'),
+      'description' => t('User has options to see and use scout trails.'),
+      'restrict access' => FALSE,
+    ),
+  );
+
+  //Generate permissions per trail type -- CAN WE DITCH THIS?
+  foreach (scout_trail_types() as $type) {
+    $type_name = check_plain($type->type);
+    $permissions += array(
+      "edit any $type_name trail" => array(
+        'title' => t('%type_name: Edit any trail', array('%type_name' => $type->label)),
+      ),
+      "view any $type_name trail" => array(
+        'title' => t('%type_name: View any trail', array('%type_name' => $type->label)),
+      ),
+    );
+  }  
+
+  foreach (scout_tip_types() as $type) {
+    $type_name = check_plain($type->type);
+    $permissions += array(
+      "edit any $type_name tip" => array(
+        'title' => t('%type_name: Edit any tip', array('%type_name' => $type->label)),
+      ),
+      "view any $type_name tip" => array(
+        'title' => t('%type_name: View any tip', array('%type_name' => $type->label)),
+      ),
+    );
+  }  
+  
+  return $permissions;
+}
+
+
+/**
+* Access callback for Scout Trails.
+ *
+ * Determines whether the given user has access to Scout Trails functionality.
+ *
+ * @param $op
+ *   The operation being performed. One of 'view'
+ *   or just 'edit' (being the same as 'create' or 'update').
+ * @param $type
+ *   Optionally a type to check access for. If nothing is
+ *   given, access for all types is determined.
+ * @param $account
+ *   The user to check for. Leave it to NULL to check for the global user.
+ * @return boolean
+ *   Whether access is allowed or not.
+ */
+function scout_trails_access($op, $type = NULL, $account = NULL) {
+  if (user_access('admin scout trails', $account)) {
+    return TRUE;
+  }
+  if (isset($type) && isset($type_name)) {
+    $op = ($op == 'view') ? 'view' : 'edit';
+    if (user_access("$op any $type_name trail", $account)) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+/**
+ * Implements callback_entity_info_uri().
+ */
+function scout_trail_uri($scout_trail) {
+  return array(
+    'path' => 'scout-trail/' . $scout_trail->trail_id,
+  );
+}
+
+/**
+ * Form factory for Scout Trail forms.
+ * @param string $type
+ *   Trail or Tip type machine name 
+ * @param stdClass $entity
+ *   The entity to create a form for
+ * @param string $op
+ *   The operation (add, edit, etc). Not used currently.
+ */
+function scout_trails_forms_wrapper($type, $entity, $op='add') {
+  if (!isset($entity)) {
+    $entity = scout_trails_default_entity($type);
+ }
+  else {
+    $type = $entity->type;
+  }
+  // Set Breadcrumbs
+  scout_trails_set_breadcrumb();
+
+	$form = drupal_get_form($type . '_scout_trail_form', $entity);
+  return $form;
+}
+
+/**
+ * Form factory for Scout Tip forms.
+ * @param string $type
+ *   Trail or Tip type machine name
+ * @param stdClass $entity
+ *   The entity to create a form for
+ * @param string $op
+ *   The operation (add, edit, etc). Not used currently.
+ */
+function scout_tips_forms_wrapper($type, $entity, $op='add') {
+  if (!isset($entity)) {
+    $entity = scout_tips_default_entity($type);
+ }
+  else {
+    $type = $entity->type;
+  }
+
+	$form = drupal_get_form($type . '_scout_tip_form', $entity);
+  return $form;
+}
+
+/**
+ * Returns a default trail entity (with user & date stamp info).
+ */
+function scout_trails_default_entity($type) {
+  $entity = new ScoutTrail;
+  $entity = scout_trail_create(array('type' => $type));
+  $entity->type = $type;
+
+  return $entity;
+}
+
+/**
+ * Returns a default scout tip entity (with user & date stamp info).
+ */
+function scout_tips_default_entity($type) {
+  $entity = new ScoutTip;
+  $entity = scout_tip_create(array('type' => $type));
+  $entity->type = $type;
+
+  return $entity;
+}
+
+/**
+ * Implements hook_forms().
+ *
+ * All scout_trails forms share the same form handler.
+ */
+function scout_trails_forms() {
+  $forms = array();
+  if ($types = scout_trail_types()) {
+    foreach (array_keys($types) as $type) {
+      $forms[$type . '_scout_trail_form']['callback'] = 'scout_trail_form';
+    }
+  }
+  if ($types = scout_tip_types()) {
+    foreach (array_keys($types) as $type) {
+      $forms[$type . '_scout_tip_form']['callback'] = 'scout_tip_form';
+    }
+  }
+//  dpm($forms, '$forms - scout_trails_forms');
+  return $forms;
+}
+
+/**
+ * Implements hook_form_alter().
+ *
+ * Alter Scout Trails form to add Scout Tips
+ */
+function scout_trails_form_alter(&$form, &$form_state, $form_id) {
+//  dpm($form, '$form - scout_trails_form_alter');  // pretty print array using Krumo to messages
+//  dpm($form_id, '$form_id - scout_trails_form_alter');  // print form ID to messages
+//  dpm($form_state, '$form_state - scout_trails_form_alter');  // pretty print array using Krumo to messages
+}
+
+/**
+ * Implements hook_form_BASE_FORM_ID_alter().
+ *
+ * Alter scout_trail_form() form to add Scout Tips
+ */
+function scout_trails_form_scout_trail_form_alter(&$form, &$form_state, $form_id) {
+//  dpm('Implements hook_form_BASE_FORM_ID_alter()');
+/*
+  dpm($form, '$form - scout_trails_form_alter');  // pretty print array using Krumo to messages
+  dpm($form_id, '$form_id - scout_trails_form_alter');  // print form ID to messages
+  dpm($form_state, '$form_state - scout_trails_form_alter');  // pretty print array using Krumo to messages
+*/
+/*
+  drupal_set_message($form_id);  // print form ID to messages
+  drupal_set_message(print_r($form, TRUE));  // print array to messages
+*/
+
+}
+
+/**
+ * Implements hook_entity_property_info_alter().
+ */
+function scout_trails_entity_property_info_alter(&$info) {
+  $properties = &$info['scout_trail']['properties'];
+  $properties['created'] = array(
+    'label' => t("Date created"),
+    'type' => 'date',
+    'description' => t("The date the node was posted."),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer nodes',
+    'schema field' => 'created',
+  );
+  $properties['changed'] = array(
+    'label' => t("Date changed"),
+    'type' => 'date',
+    'schema field' => 'changed',
+    'description' => t("The date the node was most recently updated."),
+  );
+  $properties['uid'] = array(
+    'label' => t("Scout"),
+    'type' => 'user',
+    'description' => t("The UID of the author of a Scout Trail."),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'admin scout trails',
+    'required' => TRUE,
+    'schema field' => 'uid',
+  );
+}
+
+
+/**
+ *
+ *
+ * Some hook implementations used for Scout Trails, Scout Trail Types and Scout Tips.
+ *
+ *
+ */
+
+/*******************************************************************************
+ ********************** Scout Trail API's ********************************
+ ******************************************************************************/
+/**
+* Load a Scout Trail.
+*/
+function scout_trail_load($trail_id, $reset = FALSE) {
+  $scout_trails = scout_trail_load_multiple(array($trail_id), array(), $reset);
+  return reset($scout_trails);
+}
+
+/**
+* Load multiple Scout Trails based on certain conditions.
+ *
+ * @param $trail_ids
+ *   An array of entity IDs.
+ * @param $conditions
+ *   An array of conditions to match against the {entity} table.
+ * @param $reset
+ *   A boolean indicating that the internal cache should be reset.
+ * @return
+ *   An array of scout trail entity objects, indexed by $trail_id.
+ */
+function scout_trail_load_multiple($trail_ids = array(), $conditions = array(), $reset = FALSE) {
+  return entity_load('scout_trail', $trail_ids, $conditions, $reset);
+}
+
+/**
+ * Create a Scout Trail.
+ */
+function scout_trail_create($values = array()) {
+  return entity_get_controller('scout_trail')->create($values);
+}
+
+/**
+ * Save a Scout Trail.
+ */
+function scout_trail_save(ScoutTrail $trail) {
+  $trail->save();
+}
+
+/**
+* Delete single Scout Trail.
+*/
+function scout_trail_delete(ScoutTrail $trail) {
+  $trail->delete();
+}
+
+/**
+ * Delete multiple Scout Trail entities.
+ *
+ * @param $trail_ids
+ *   An array of Scout Trail entity IDs.
+ */
+function scout_trail_delete_multiple(array $trail_ids) {
+  entity_get_controller('scout_trail')->delete($trail_ids);
+}
+
+
+/*******************************************************************************
+ ********************** Scout Trail Type API's ********************************
+ ******************************************************************************/
+
+/**
+ * Access callback for Scout Trail Type.
+ */
+function scout_trails_type_access($op, $entity = NULL) {
+  return user_access('admin scout trails');
+}
+
+/**
+ * Load Scout Trail Type.
+ */
+function scout_trail_type_load($scout_trail_type) {
+  return scout_trail_types($scout_trail_type);
+}
+
+/**
+ * List of Scout Trail Types.
+ */
+function scout_trail_types($trail_type_name = NULL) {
+  $types = entity_load_multiple_by_name('scout_trail_type', isset($trail_type_name) ? array($trail_type_name) : FALSE);
+  return isset($trail_type_name) ? reset($types) : $types;
+}
+
+/**
+ * Save Scout Trail type entity.
+ */
+function scout_trail_type_save(&$scout_trail_type) {
+  entity_save('scout_trail_type', $scout_trail_type);
+}
+
+/**
+* Delete single case trail type.
+*/
+function scout_trail_type_delete($task_type) {
+  entity_delete('scout_trail_type', entity_id('scout_trail_type' ,$task_type));
+}
+
+/**
+* Delete multiple case trail types.
+*/
+function scout_trail_type_delete_multiple($task_type_ids) {
+  entity_delete_multiple('scout_trail_type', $task_type_ids);
+}
+
+
+/*******************************************************************************
+ ********************** Scout Tip API's ********************************
+ ******************************************************************************/
+
+/**
+* Load a Scout Tip.
+*/
+function scout_tip_load($tip_id, $reset = FALSE) {
+  $scout_tips = scout_tip_load_multiple(array($tip_id), array(), $reset);
+  return reset($scout_tips);
+}
+
+/**
+* Load multiple Scout Trail Tips based on certain conditions.
+ *
+ * @param $tip_ids
+ *   An array of entity IDs.
+ * @param $conditions
+ *   An array of conditions to match against the {entity} table.
+ * @param $reset
+ *   A boolean indicating that the internal cache should be reset.
+ * @return
+ *   An array of scout trail entity objects, indexed by $tip_id.
+ */
+function scout_tip_load_multiple($tip_ids = array(), $conditions = array(), $reset = FALSE) {
+  return entity_load('scout_tip', $tip_ids, $conditions, $reset);
+}
+
+/**
+ * Create a Scout Tip.
+ */
+function scout_tip_create($values = array()) {
+  return entity_get_controller('scout_tip')->create($values);
+}
+
+/**
+ * Save a Scout Tip.
+ */
+function scout_tip_save(ScoutTip $tip_id) {
+  $tip_id->save();
+}
+
+/**
+* Delete single Scout Tip.
+*/
+function scout_tip_delete(ScoutTip $tip_id) {
+  $tip_id->delete();
+}
+
+/**
+ * Delete multiple Scout Trail Tip entities.
+ *
+ * @param $tip_ids
+ *   An array of Scout Trail Tip entity IDs.
+ */
+function scout_tip_delete_multiple(array $tip_ids) {
+  entity_get_controller('scout_tip')->delete($tip_ids);
+}
+
+/*******************************************************************************
+ ********************** Scout Tip Type API's ********************************
+ ******************************************************************************/
+
+/**
+ * Access callback for Scout Tip Type.
+ */
+function scout_tip_type_access($op, $entity = NULL) {
+  return user_access('admin scout trails');
+}
+
+/**
+ * Load Scout Tip Type.
+ */
+function scout_tip_type_load($scout_tip_type) {
+  return scout_tip_types($scout_tip_type);
+}
+
+/**
+ * List of Scout Tip Types.
+ */
+function scout_tip_types($tip_type_name = NULL) {
+  $types = entity_load_multiple_by_name('scout_tip_type', isset($tip_type_name) ? array($tip_type_name) : FALSE);
+  return isset($tip_type_name) ? reset($types) : $types;
+}
+
+/**
+ * Save Scout Tip type entity.
+ */
+function scout_tip_type_save(&$scout_tip_type) {
+  entity_save('scout_tip_type', $scout_tip_type);
+}
+
+/**
+* Delete single case tip type.
+*/
+function scout_tip_type_delete($task_type) {
+  entity_delete('scout_tip_type', entity_id('scout_tip_type' ,$task_type));
+}
+
+/**
+* Delete multiple case tip types.
+*/
+function scout_tip_type_delete_multiple($task_type_ids) {
+  entity_delete_multiple('scout_tip_type', $task_type_ids);
+}
+
+
+/**
+ * Implements hook_entity_insert().
+ */
+/*
+function scout_trails_entity_insert($entity, $entity_type) {
+  if ($entity_type == 'scout_trail') {
+    $_SESSION['entity_hook_test']['entity_insert'][] = entity_id($entity_type, $entity);
+  }
+}
+*/
+
+/**
+ * Menu title callback for showing individual entities
+ */
+function scout_trails_page_title(ScoutTrail $patharg){
+  return $patharg->name;
+}
+
+
+/**
+ * Sets up content to show an individual scout trail
+ * @todo - get rid of drupal_set_title();
+ */
+function scout_trails_view($scout_trail, $view_mode = 'full') {    
+  $controller = entity_get_controller('scout_trail');
+  $content = $controller->view(array($scout_trail->trail_id => $scout_trail));
+  drupal_set_title($scout_trail->title);
+  return $content;
+}
+
+/**
+  * Implements hook_views_api().
+  */
+function scout_trails_api() {
+  return array(
+    'api' => 3,
+    'path' => drupal_get_path('module', 'scout_trails'),
+  );
+}
+
+/**
+ * Sets the breadcrumb for administrative Scout Trails pages.
+ */
+function scout_trails_set_breadcrumb() {
+  $breadcrumb = array(
+    l(t('Home'), '<front>'),
+    l(t('Administration'), 'admin'),
+    l(t('Content'), 'admin/content'),
+    l(t('Scout Trails'), 'admin/content/scout-trails'),
+  );
+
+  drupal_set_breadcrumb($breadcrumb);
+}
+
+/**
+ * scout_trails_markup_scout_trail()
+ *
+ * @param $trail_tips
+ *   An array of objects (scout_tip entities).
+ *
+ * Build Joyride compatible tips content from Scout Trail scout_trail entities.
+ */
+function scout_trails_markup_scout_trail(&$trail_tips) {
+  // We're going to collect values and create a bunch of variables to use for markup,
+  // and pass those along as trail content for Joyride.
+    $trail_content = '';
+    foreach($trail_tips as $trail_tip){
+      // Get the basic content: title, text & button text
+      $tip_title = $trail_tip->title;
+      //dpm($tip_title,'$tip_title');
+      $tip_text = $trail_tip->field_scout_tip_text['und'][0]['value'];
+      $button_text = $trail_tip->field_scout_tip_button_text['und'][0]['value'];
+
+      // How this Scout Tip is anchored to the page:
+      //   options are by data id or class id selectors OR modal (anchored to entire page).
+      // So the first step is to figure out if this is modal,
+      // if it is we won't need the selectors.
+
+      $selector_id = '';
+      $selector_class = '';
+
+      $selector = $trail_tip->field_scout_tip_selector_type['und'][0]['value'];
+      $modal = TRUE ? $selector == 'Modal' : $modal = FALSE;
+
+      // We don't know yet if the selectors have been set, so find out.
+      // We'll set these here if they exist, and use them further down, if we need them.
+
+      if ((!$modal) && (isset($trail_tip->field_scout_tip_selector_id['und'][0]['value']))) {
+	      $selector_id = $trail_tip->field_scout_tip_selector_id['und'][0]['value'];
+      }
+      if ((!$modal) && (isset($trail_tip->field_scout_tip_selector_class['und'][0]['value']))) {
+	      $selector_class = $trail_tip->field_scout_tip_selector_class['und'][0]['value'];
+      }
+
+      // What Joyride means by "location" is the orientation (above/below/right/left) to the selector the tip is anchored to.
+      // So, please pardon any confusion.
+      $tip_orientation = $trail_tip->field_scout_tip_orientation['und'][0]['value'];
+
+      // This next class is an optional custom class that can be added to the Scout Tip for custom styling.
+      $tip_class = $trail_tip->field_scout_tip_class['und'][0]['value'];
+
+      // Animation is whether or not the tip pops or fades
+      $tip_animation = $trail_tip->field_scout_tip_animation['und'][0]['value'];
+
+      // Variables are gathered, so now we begin the trail content markup for Joyride.
+      // Each scout tip will be one line item in Joyride's Ordered List
+      $trail_content .= '<li ';
+
+      // Build a modal scout tip, if this is modal
+      if ($modal) {
+        $trail_content .= 'data-text="' . $button_text . '" class="' . $tip_class . '" data-options="tipLocation:' . $tip_orientation . ';tipAnimation:' . $tip_animation . '">';
+      } else {
+
+        // Otherwise get any selectors that we gathered above
+        if (!empty($selector_id)) {
+	         $trail_content .= 'data-id="' . $selector_id . '" ';
+        }
+        if (!empty($selector_class)) {
+	         $trail_content .= 'data-class="' . $selector_class . '" ';
+        }
+
+        // Add the rest of the location/orientation and button related stuff, including any custom class added.
+        $trail_content .= 'data-text="' . $button_text . '" class="' . $tip_class . '" data-options="tipLocation:' . $tip_orientation . ';tipAnimation:' . $tip_animation . '">';
+      }
+      // All tips have title and text
+      $trail_content .= '<h2>' .  $tip_title . '</h2>';
+      $trail_content .= '<p>' . $tip_text . '</p> </li>';
+    }
+    //dpm($trail_content,'$trail_content');
+    return $trail_content;
+}

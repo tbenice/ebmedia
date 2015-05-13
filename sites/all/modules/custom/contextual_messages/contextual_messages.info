@@ -1,0 +1,7 @@
+name = Contextual Messages
+description = Allows admins to add popup 'help' messages to blocks, which will then be displayed upon page-load, hover, or click on the block
+package = Other
+scripts[] = js/contextual_messages.js
+scripts[] = js/jquery.cookie.js
+stylesheets[all][] = css/contextual_messages.css
+core = 7.x

@@ -1,0 +1,330 @@
+<?php
+/**
+ * @file
+ * @author - sherakama
+ *
+ **/
+
+
+/**
+ * Implements hook_help().
+ */
+function contextual_view_modes_help($path, $arg) {
+  switch ($path) {
+    case 'admin/help#contextual_view_modes':
+      $help = '<p>' . t('Please submit help requests and issues to the !link.', array('!link' => l("Druapl.org issue queue", 'https://www.drupal.org/project/contextual_view_modes/'))) . '</p>';
+      $help .= "<h2>" . t("Global entity contextual view mode form") . "</h2>";
+      $help .= "<p>" . t("The global entity configuration form can be found !here.", array("!here" => l("here", 'admin/structure/cvm'))) . "</p>";
+      $help .= "<p>" . t("To use this form follow these steps:") . "</p>";
+      $help .= "<p>" . t("Create a context. You will need a context with atleast one condition available to evaluate against. For example: you can create a context with a condition for where the user role is anoymous.") . "</p>";
+      $help .= "<p>" . t("Expand entity type to reveal configuration options. For example, if you click on node the field will expand to show you the options available.") . "</p>";
+      $help .= "<p>" . t("Select type. Choose the context type or bundle type you want to change the view mode of. For example, under nodes you can select article.") . "</p>";
+      $help .= "<p>" . t("Select context. Choose a context from the drop down select options. For example, if you created an anonymous user context, the name of that context should appear in the drop down.") . "</p>";
+
+      return $help;
+  }
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function contextual_view_modes_permission() {
+
+  $perms = array(
+    'administer cvm settings' => array(
+      'title' => t('Administer Contextual View Modes'),
+      'description' => t('Allow administration of contextual view mode settings'),
+    ),
+    'set view modes per node' => array(
+      'title' => t('Contextual View Modes Per Node'),
+      'description' => t('Allow changing/setting contextual view mode per node'),
+    )
+  );
+
+  return $perms;
+}
+
+/**
+ * Implements hook_menu().
+ */
+function contextual_view_modes_menu() {
+  $items = array();
+
+  $items['admin/structure/cvm'] = array(
+    'title' => 'Contextual View Modes',
+    'description' => 'Settings and configuration options for contextual view modes',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('contextual_view_modes_settings_form'),
+    'file' => 'contextual_view_modes.admin.inc',
+    'access arguments' => array('administer cvm settings'),
+  );
+
+  return $items;
+}
+
+/**
+ * Implementation of hook_entity_view_alter().
+ */
+function contextual_view_modes_entity_view_alter(&$build, $type) {
+
+  // We do not support comments at this time.
+  if ($type == "comment") {
+    return;
+  }
+
+  $view_mode = FALSE;
+  // Don't want to cause infinite loops nor do we want extra processing.
+  $static = &drupal_static(__FUNCTION__, array());
+  $md5 = md5(serialize($build));
+
+  if (in_array($md5, $static)) {
+    return;
+  }
+
+  // V is set. Dont mess with display suite.
+  if (module_exists('ds_extras') && isset($_GET['v'])) {
+    return;
+  }
+
+  $entity_types = entity_get_info();
+  // Define some things.
+  $langcode = isset($build['#language']) ? $build['#language'] : NULL;
+
+  // Something very wrong if the entity type does not exist.
+  if (!isset($entity_types[$type])) {
+    return;
+  }
+
+  // We are going to need this to continue.
+  $entity = contextual_view_modes_get_entity_from_build_array($build);
+
+  // If we don't find an entity then we just stop.
+  if (!$entity) {
+    return;
+  }
+
+  // Check to see if there is a individual entity setting.
+  $view_mode = contextual_view_modes_evaluate_individual_options($entity, $type);
+
+  // Check to see if there is a global option.
+  if (!$view_mode) {
+    $view_mode = contextual_view_modes_evaluate_global_options($entity, $type);
+  }
+
+  // Nothing found. Die die die.
+  if (!$view_mode) {
+    return;
+  }
+
+  // Rebuild the entity view...
+  $view_callback = $entity_types[$type]['view callback'];
+  if (function_exists($view_callback)) {
+    $static[] = $md5;
+    $wrapper = entity_metadata_wrapper($type, $entity);
+    $id = $wrapper->getIdentifier();
+    $build = $view_callback(array($id => $entity), $view_mode, $langcode, $type);
+  }
+
+  // Dance a little jig...
+
+}
+
+/**
+ * [contextual_view_modes_evaluate_individual_options description]
+ * @param  [type] $entity [description]
+ * @param  [type] $type   [description]
+ * @return [type]         [description]
+ */
+function contextual_view_modes_evaluate_individual_options($entity, $type) {
+  $entity_types = entity_get_info();
+
+  // Check for a setting in the entity.
+  if (!contextual_view_modes_is_valid_entity($entity, $type)) {
+    return FALSE;
+  }
+
+  // Check to see if the view mode exists.
+  $view_mode = contextual_view_modes_entity_get_view_mode($entity, $type);
+
+  // Invalid view mode.
+  if (!isset($entity_types[$type]['view modes'][$view_mode])) {
+    return FALSE;
+  }
+
+  // Good view mode.
+  return $view_mode;
+}
+
+/**
+ * [contextual_view_modes_evaluate_global_options description]
+ * @param  [type] $entity [description]
+ * @param  [type] $type   [description]
+ * @return [type]         [description]
+ */
+function contextual_view_modes_evaluate_global_options($entity, $type) {
+
+  $settings = variable_get('contextual_view_modes_global', array());
+  $contexts = contextual_view_modes_get_active_contexts();
+  $keys = array_keys($contexts);
+
+  // Not valid.
+  if (!isset($settings[$type])) {
+    return;
+  }
+
+  // Loop through each context and see if this entity has a view mode assigned
+  // to a valid context.
+  foreach ($settings[$type] as $delta => $values) {
+    if (in_array($values['context'], $keys)) {
+      return $values['view_mode'];
+    }
+  }
+
+  return FALSE;
+}
+
+/**
+ * Returns the entity from the build array.
+ *
+ * This is special because I have not yet figured out how to get the name of the
+ * entity without checking for specific types.
+ *
+ * @param array $build
+ *   the build array from hook_entity_view_alter
+ *
+ * @return object
+ *   The entity object.
+ */
+function contextual_view_modes_get_entity_from_build_array($build = array()) {
+
+  // Now we need to pull the entity out of the build array. This can be fun.
+  $entity = isset($build['#entity']) ? $build['#entity'] : FALSE;
+
+  // Because nodes are special.
+  if (isset($build['#node'])) {
+    $entity = $build['#node'];
+  }
+
+  // Because terms are special.
+  elseif (isset($build['#term'])) {
+    $entity = $build['#term'];
+  }
+
+  // Because users are special.
+  elseif (isset($build['#account'])) {
+    $entity = $build['#account'];
+  }
+
+  return $entity;
+}
+
+/**
+ * Validates view_mode switching on entity.
+ *
+ * Check to see if this entity has global view mode options or a per entity
+ * option available.
+ *
+ * @param object $entity
+ *   The entity object to work upon.
+ *
+ * @return bool
+ *   True if the entity is a valid entity and has settings to run.
+ */
+function contextual_view_modes_is_valid_entity($entity, $entity_type) {
+
+  // We do not support comments at this time.
+  if ($entity_type == "comment") {
+    return FALSE;
+  }
+
+  list($id, $vid, $bundle) = entity_extract_ids($entity_type, $entity);
+
+  $settings = variable_get("contextual_view_modes_" . $entity_type);
+
+  // If there is an entry for the entity id return true.
+  if (!empty($settings[$vid])) {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+/**
+ * [contextual_view_modes_entity_get_view_mode description]
+ * @param  [type] $entity [description]
+ * @return [type]         [description]
+ */
+function contextual_view_modes_entity_get_view_mode($entity, $type) {
+
+  list($id, $vid, $bundle) = entity_extract_ids($type, $entity);
+
+  $contexts = contextual_view_modes_get_active_contexts();
+
+  // Get the variables for this entity.
+  $settings = variable_get('contextual_view_modes_' . $type, array());
+
+  // Loop through each context and see if this entity has a view mode assigned
+  // to a valid context.
+  $keys = array_keys($contexts);
+
+  foreach ($settings[$vid] as $delta => $values) {
+    if (in_array($values['context_name'], $keys)) {
+      return $values['view_mode'];
+    }
+  }
+
+  return "default";
+}
+
+/**
+ * Returns an array of keyed and formatted values of available contexts.
+ *
+ * @return array
+ *   An array of context names keyed by their machine name.
+ */
+function contextual_view_modes_get_context_options() {
+  // Get the available contexts for use in a select field.
+  $contexts = array('none' => '- Select a context -');
+  $contexts += context_context_list();
+  foreach ($contexts as $key => $name) {
+    $contexts[$key] = ucfirst(str_replace('_', " ", $name));
+  }
+  return $contexts;
+}
+
+/**
+ * Returns an array of view modes for an entity type.
+ * @param  [type] $entity_type [description]
+ * @return [type]              [description]
+ */
+function contextual_view_modes_get_view_mode_options($entity_type = NULL) {
+
+  // Get the available view modes for use in a select field.
+  $entity_info = entity_get_info($entity_type);
+  $view_modes_formatted = array('none' => '- None -');
+  $view_modes_formatted['default'] = 'Default';
+  foreach ($entity_info['view modes'] as $name => $values) {
+
+    // @Todo: allow this to work.
+    if ($name == "rss") {
+      continue;
+    }
+
+    $view_modes_formatted[$name] = ucwords(str_replace('_', " ", $values['label']));
+  }
+
+  return $view_modes_formatted;
+}
+
+/**
+ * Helper/Wrapper function for context_active_contexts().
+ * @return [type] [description]
+ */
+function contextual_view_modes_get_active_contexts() {
+
+  // To ensure these contexts get evaluated we need to call this directly.
+  module_invoke_all('context_page_condition');
+
+  // Get all of the contexts that have are active.
+  return context_active_contexts();
+}

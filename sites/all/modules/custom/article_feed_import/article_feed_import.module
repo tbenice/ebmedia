@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the Article Feed Import feature.
+ */
+
+include_once 'article_feed_import.features.inc';

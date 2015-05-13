@@ -1,0 +1,12 @@
+@CHARSET "UTF-8";
+
+#block-id-mailing-list-mailchimp-mailing-list-mc-subscribe-form {
+  display:none;
+}  
+
+#block-id-mailing-list-mailchimp-mailing-list-mc-subscribe-link {
+  position: absolute;
+  left: 250px;
+  top: 25px;
+  color: black;
+}

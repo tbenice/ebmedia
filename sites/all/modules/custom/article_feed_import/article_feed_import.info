@@ -1,0 +1,16 @@
+name = Article Feed Import
+description = news article node importer from csv
+core = 7.x
+package = BTW
+dependencies[] = articles_support
+dependencies[] = ctools
+dependencies[] = feeds
+dependencies[] = feeds_tamper
+features[ctools][] = feeds:feeds_importer_default:1
+features[ctools][] = feeds_tamper:feeds_tamper_default:2
+features[features_api][] = api:2
+features[feeds_importer][] = article_entity_importer
+features[feeds_importer][] = article_importer
+features[feeds_tamper][] = article_importer-images-explode
+features[feeds_tamper][] = article_importer-tags-explode
+features[feeds_tamper][] = article_importer-title-convert_case

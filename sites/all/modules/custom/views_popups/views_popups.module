@@ -1,0 +1,54 @@
+<?php
+
+include_once('views_popups.features.inc');
+
+/**
+ * 
+ * implements hook_menu
+ */
+function views_popups_menu() {
+  $items['views-popup'] = array(
+    'title' => t('views popup'),
+    'type' => MENU_CALLBACK,
+    'access arguments' => array('access content'),
+    'page callback' => 'views_popups_callback',
+    'file' => 'includes/views_popups.pages.inc',
+  );
+  $items['admin/config/user-interface/vpop'] = array(
+    'title' => t('Views Popup Configuration'),
+    'description' => t('Configure selectors to fine tune views popup positioning.'),
+    'type' => MENU_NORMAL_ITEM,
+    'access arguments' => array('administer vpop'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vpop_configuration_form'),
+    'file' => 'includes/views_popups.pages.inc',
+  );
+  return $items;
+}
+
+/**
+ * 
+ * implements hook_permission
+ */
+function views_popups_permission() {
+  $permissions = array();
+  $permissions['administer vpop'] = array(
+    'title' => t('Administer Views Popups'),
+    'restrict access' => TRUE,
+  );
+  return $permissions;
+}
+
+/**
+ * 
+ * Implements hook_init
+ * Need to add js settings to Drupal js object
+ */
+function views_popups_init() {
+  drupal_add_js(array('vpop' => array(
+  	'outerContainer'=>variable_get('vpop_outer_container', 'inner-wrapper'), 
+  	'innerContainer'=> variable_get('vpop_inner_container', 'content'), 
+  	'leftNudge'=> variable_get('vpop_left_nudge', 0), 
+  	'topNudge'=>variable_get('vpop_top_nudge', 0),
+    'throbberPath' => variable_get('vpop_throbber_path', drupal_get_path('module', 'views_popups') . '/images/throbber.gif'))), 'setting');
+}

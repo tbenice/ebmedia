@@ -1,0 +1,134 @@
+<?php 
+
+/**
+ * 
+ * adds js to the page
+ * @param string $delta
+ *   name of the block for this node pager
+ */
+function entity_pager_add_js($delta) {
+  $javascript = &drupal_static('drupal_add_js', array());
+  //might be we've already loaded this if there's >1 pager
+  $path = drupal_get_path('module', 'entity_pager');
+  if(!isset($javascript[$path . '/js/entity_pager.js'])) {
+    drupal_add_js($path . '/js/entity_pager.js');
+    drupal_add_css($path . '/css/entity_pager.css');
+  }
+  $settings = array();
+  $settings['nodePagers'][$delta]['scrollPercent'] = variable_get($delta . '_scroll_percent', 50);
+  drupal_add_js($settings, 'setting');
+}
+
+/**
+ * Adds drupal js setting that this node pager
+ * delta is not using js
+ * @param string $delta
+ */
+function entity_pager_clear_js($delta) {
+  $settings = array();
+  $settings['nodePagersNoJs'][$delta] = $delta;
+  drupal_add_js($settings, 'setting');    
+}
+
+/**
+ * 
+ * implements hook_menu
+ */
+function entity_pager_menu() {
+  $items['admin/config/user-interface/entity-pager'] = array(
+    'title' => t('Entity Pager'),
+    'description' => t('Set entity pager options'),
+    'type' => MENU_NORMAL_ITEM,
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('entity_pager_config_form'),
+    'access arguments' => array('administer nodes'),
+    'file' => 'includes/entity_pager.admin.inc',
+  );
+  return $items;
+}
+
+/**
+ * implements hook_form_FORM_ID_alter
+ * @param array $form
+ * @param array $form_state
+ * @param string $form_id
+ */
+function entity_pager_form_block_admin_configure_alter(&$form, &$form_state, $form_id) {
+  $delta = $form['delta']['#value'];
+  if(!(strpos($delta, 'entity_pager') === false)) {
+    module_load_include('inc', 'entity_pager', 'includes/entity_pager.forms');
+    $form += entity_pager_block_config_elements($form_state, $delta);
+  }
+}
+
+/**
+ * implements hook_block_save
+ * Saves the extra config data for entity pager blocks
+ * @param string $delta
+ * @param array $edit
+ */
+function entity_pager_block_save($delta = '', $edit = array()) {
+  if (!(strpos($delta, 'entity_pager') === false)) {
+    variable_set($delta . '_use_js', $edit[$delta . '_use_js']);
+    variable_set($delta . '_entity_pager_view', $edit[$delta . '_entity_pager_view']);
+    variable_set($delta . '_entity_id_arg', $edit[$delta . '_entity_id_arg']);
+    variable_set($delta . '_entity_pager_entity_type', $edit[$delta . '_entity_pager_entity_type']);
+    variable_set($delta . '_scroll_percent', $edit[$delta . '_scroll_percent']);
+    variable_set($delta . '_pager_text_custom', $edit[$delta . '_pager_text_custom']);
+    variable_set($delta . '_pager_text_previous', $edit[$delta . '_pager_text_previous']);
+    variable_set($delta . '_pager_text_next', $edit[$delta . '_pager_text_next']);
+    variable_set($delta . '_use_link', $edit[$delta . '_use_link']);
+    variable_set($delta . '_link_text', $edit[$delta . '_link_text']);
+    variable_set($delta . '_link_path', $edit[$delta . '_link_path']);
+  }
+}
+
+function entity_pager_js1($form, $form_state) {
+  return $form['entity_pager_settings'];  
+}
+
+/**
+ * 
+ * implements hook_block_info
+ */
+function entity_pager_block_info() {
+  $num_blocks = variable_get('entity_pager_num_blocks', 1);
+  for ($i = 1;  $i <= $num_blocks; $i++) {
+    $blocks['entity_pager_' .  $i] = array (
+      'info' => t('Entity Pager #' . $i),
+      'description' => t('Provides a way to navigate between entitys on entity pages: block #' . $i),
+      'cache' => DRUPAL_NO_CACHE,  
+    );
+  }
+  return $blocks;
+}
+
+/**
+ * 
+ * implements hook_block_view
+ * @param string $delta
+ */
+function entity_pager_block_view($delta) { 
+  if (!(strpos($delta, 'entity_pager') === false)) {
+    if(variable_get($delta . '_use_js') == 1) {
+      entity_pager_add_js($delta);
+    }
+    else {
+      entity_pager_clear_js($delta);
+    }
+    $block['content'] = theme('entity_pager', array('delta' => $delta));
+    return $block;
+  }
+}
+
+/**
+ * implements hook_theme
+ */
+function entity_pager_theme() {
+  $themes['entity_pager'] = array(
+    'variables' => array('delta' => 'entity_pager_1'),
+  	'template' => 'entity_pager',
+    'file' => 'theme/entity_pager.theme.inc',
+  );
+  return $themes;
+}

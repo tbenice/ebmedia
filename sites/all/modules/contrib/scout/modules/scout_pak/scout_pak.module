@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the Scout Pak feature.
+ */
+
+include_once 'scout_pak.features.inc';

@@ -1,0 +1,4 @@
+name = Homepage Video
+description = Allows for adding a full width video to a homepage
+package = Other
+core = 7.x

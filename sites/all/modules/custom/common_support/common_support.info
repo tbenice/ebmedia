@@ -1,0 +1,6 @@
+name = Common Support
+description = Common theme and other functions.
+core = 7.x
+package = BTW
+scripts[] = js/common_support.js
+stylesheets[all][] = css/common_support.css

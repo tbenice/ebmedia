@@ -1,0 +1,13 @@
+diff --git a/sites/all/modules/contrib/contextual_view_modes/modules/contextual_view_modes_nodes/contextual_view_modes_nodes.module b/sites/all/modules/contrib/contextual_view_modes/modules/contextual_view_modes_nodes/contextual_view_modes_nodes.module
+index c51f2f8..538132c 100644
+--- a/sites/all/modules/contrib/contextual_view_modes/modules/contextual_view_modes_nodes/contextual_view_modes_nodes.module
++++ b/sites/all/modules/contrib/contextual_view_modes/modules/contextual_view_modes_nodes/contextual_view_modes_nodes.module
+@@ -3,7 +3,7 @@
+ /**
+  * Implements hook_form_alter().
+  */
+-function contextual_view_modes_nodes_form_page_node_form_alter(&$form, &$form_state) {
++function contextual_view_modes_nodes_form_node_form_alter(&$form, &$form_state) {
+ 
+   // Node for the node edit.
+   $node = isset($form['#node']) ? $form['#node'] : NULL;

@@ -1,0 +1,9 @@
+name = Inline Editing
+description = Allows inline editing of fields from where their data is displayed
+package = Fields
+dependencies[] = field
+dependencies[] = options
+dependencies[] = entity
+scripts[] = js/inline_editing.js
+stylesheets[all][] = css/inline_editing.css
+core = 7.x

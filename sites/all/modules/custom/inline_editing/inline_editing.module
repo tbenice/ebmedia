@@ -1,0 +1,335 @@
+<?php 
+/**
+ * @file
+ * provides a field formatter for various fields
+ * that adds in a js enabled widget form so that
+ * fields can be edited inline where the field data
+ * is displayed. 
+ */
+
+
+/**
+ * Helper function sets default settings for the
+ * base formatter in inline editing formatter forms
+ * @param array $settings
+ * @param array $field
+ * @return array $settings
+ *   returns an altered settings array with default 
+ *   vals in if not already set
+ */
+function inline_editing_formatter_settings($settings, $field) {
+  $field_info = field_info_field_types($field['type']);
+  if(!isset($settings['base_formatter'])) {
+    $settings['base_formatter'] = $field_info['default_formatter'];
+    $settings['base_formatter_settings'] = array();
+  }
+  return $settings;
+}
+
+/**
+ * Implements hook_field_formatter_info().
+ */
+function inline_editing_field_formatter_info() {
+  $all_field_types = array_keys(field_info_field_types());
+  $formatters['inline_editing'] = array(
+    'label' => t('Inline Editing'),
+    'description' => t('Adds an inline editing form to the field output, otherwise using your formatter of choice'),
+    'field types' => $all_field_types,
+    'settings' => array('base_formatter'=>null, 'base_formatter_settings'=>array()),
+  );
+  return $formatters;
+}
+
+
+/**
+ * Form submit handler for AJAX change of the fallback formatter.
+ */
+function inline_editing_field_ui_display_overview_multistep_submit($form, &$form_state) {
+  $trigger = $form_state['triggering_element'];
+  $op = $trigger['#op'];
+
+  // Store the saved settings.
+  $field_name = $trigger['#field_name'];
+  $values = $form_state['values']['fields'][$field_name]['settings_edit_form']['settings'];
+  $form_state['formatter_settings'][$field_name] = $values;
+
+  $form_state['rebuild'] = TRUE;
+}
+
+
+/**
+ * Implements hook_field_formatter_settings_form().
+ */
+function inline_editing_field_formatter_settings_form($field, $instance, $view_mode, $form, &$form_state) {
+  //This gets the view_mode where our settings are stored
+  $display = $instance['display'][$view_mode];
+  //This gets the actual settings
+  $settings = inline_editing_formatter_settings($display['settings'], $field);
+  //Initialize the element variable
+
+  $element = array();
+  /**
+   * add a drop-down list of field formatters
+   * that are valid for this field
+   */  
+  $options = inline_editing_get_formatters($field['type']);
+  $field_info = field_info_field_types($field['type']);
+  if ($options = inline_editing_get_formatters($field['type'])) {
+
+    $element['base_formatter'] = array(
+      '#type' => 'select',
+      '#title' => t('Base Formatter'),
+      '#description' => t('Select which formatter will output the field data'),
+      '#default_value' => $settings['base_formatter'],
+      '#options' => $options,
+    );
+  
+    /**
+     * add ajax form reload load capability based on whether
+     * this is a view mode setting (field ui) or a views field formatter setting
+     */  
+    if (isset($form_state['complete form']) && $form_state['complete form']['#form_id'] == 'field_ui_display_overview_form') {
+      // Field UI.
+      $element['base_formatter'] += array(
+        '#field_name' => $field['field_name'],
+        '#op' => 'edit',
+        '#executes_submit_callback' => TRUE,
+        '#submit' => array('inline_editing_field_ui_display_overview_multistep_submit'),
+        '#ajax' => array(
+          'callback' => 'field_ui_display_overview_multistep_js',
+          'wrapper' => 'field-display-overview-wrapper',
+          'effect' => 'fade',
+        ),
+      );
+    }
+    else if (isset($form_state['form_id']) && $form_state['form_id'] == 'views_ui_config_item_form') {
+      // Views UI.
+      $element['base_formatter'] += array(
+        '#ajax' => array(
+          'path' => views_ui_build_form_url($form_state),
+        ),
+        '#submit' => array('views_ui_config_item_form_submit_temporary'),
+        '#executes_submit_callback' => TRUE,
+      );
+    }
+  
+    //load base formatter settings form
+    $formatter = field_info_formatter_types($settings['base_formatter']);
+    $formatter['type'] = $settings['base_formatter'];
+    
+    // create a false instance to pass to the base formatter form function
+    $base_formatter_settings = $settings['base_formatter_settings'] + field_info_formatter_settings($settings['base_formatter']);
+    $false_instance = array();
+    $false_instance['display'][$view_mode] = array(
+      'settings'=>$base_formatter_settings,
+      'type'=>$settings['base_formatter'],
+    );
+        
+    $function = $formatter['module'] . '_field_formatter_settings_form';
+    if (function_exists($function)) {
+      $val = array();
+      $settings_form = $function($field, $false_instance, $view_mode, array(), $val);
+    }  
+    if (!empty($settings_form)) {
+      $element['base_formatter_settings'] = $settings_form;
+    }
+  }
+  return $element;
+}
+
+/**
+ * Implements hook_field_formatter_settings_summary().
+ */
+function inline_editing_field_formatter_settings_summary($field, $instance, $view_mode) {
+  $display = $instance['display'][$view_mode];
+  $settings = inline_editing_formatter_settings($display['settings'], $field);
+  $formatters = field_info_formatter_types();
+  $summary = array();
+  $summary[] = t('Base Formatter: @base_formatter', array('@base_formatter'=>$formatters[$settings['base_formatter']]['label']));
+
+  return implode('<br/>', $summary);
+}
+
+/**
+ * Implements hook_preprocess_field().
+ */
+function inline_editing_preprocess_field(&$vars, $hook) {
+  if(isset($vars['element']['#inline_editing']) && !empty($vars['items'])) {
+    $entity = $vars['element']['#object'];
+    $ids = entity_extract_ids($entity->type, $entity);
+    $vars['classes_array'][] = 'inline-editing-field ' . 'inline-editing-' . $vars['element']['#field_name'] . '-' . 
+      $vars['element']['#object']->type . '-' . $ids[0];
+    //add inline form to front of items array so that it is rendered first
+    $vars['items'][] = array('#markup' => l(t('[edit]'), current_path(), array('attributes' => array('class' => array('inline-editing-show')))));
+    $vars['items'][] = array('#markup' => $vars['element']['#inline_form']);
+  }
+}
+
+/**
+ * Implements hook_field_formatter_view().
+ */
+function inline_editing_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, &$items, $display) {
+  $settings = inline_editing_formatter_settings($display['settings'], $field);
+  $elements = array();
+  //pop in the base formatter rendered array
+  $base_display = array(
+    'label' => $display['label'],
+    'type' => $settings['base_formatter'],
+    'settings' => $settings['base_formatter_settings'],
+    'weight' => $display['weight'],
+  );
+  $field_val = field_view_field($entity_type, $entity, $field['field_name'], $base_display, LANGUAGE_NONE);
+  
+  if (isset($display['views_view'])) {
+    $view = $display['views_view'];
+    $views_field = $display['views_field'];
+    $row_id = $display['views_row_id'];
+    list($id, $vid, $bundle) = entity_extract_ids($entity_type, $entity);
+    $content = (entity_access('update', $entity_type, $entity)) ? '<div class="inline-editing-field">' . render($field_val) . '<div class="parent">' . l(t('[edit]'), current_path(), array('attributes' => array('class' => array('inline-editing-show')))) . '</div><!--parent-->
+      <div class="child">' . drupal_render(drupal_get_form('inline_editing_field_widget_form_' . $field['field_name'] . '_' 
+      . $bundle . '_' . $id . '_' . $vid, $entity_type, $entity, $field, $instance, $langcode)) . '</div><!-- child --></div><!--inline-editing-->' : render($field_val);
+    $elements[] = array('#markup' => $content);
+    return $elements;
+  }
+  $elements = $field_val;
+  //check perms then add form to elements
+  list($id, $vid, $bundle) = entity_extract_ids($entity_type, $entity);
+  if (entity_access('update', $entity_type, $entity) && (!empty($elements['#items']))) {
+    $elements['#inline_editing']  = 'inline_editing';
+  
+    /**
+     * add inline editing form to the elements, will be
+     * added to the items array in field preprocess
+     */
+    $widget_form = drupal_get_form('inline_editing_field_widget_form_' . $field['field_name'] . '_' . $bundle . '_' . $id . '_' . $vid, $entity_type, $entity, $field, $instance, $langcode);
+    $widget_form = drupal_render($widget_form);
+    $elements['#inline_form'] = $widget_form;
+  }
+  return $elements;
+}
+
+/**
+ * Implements hook_forms().
+ */
+function inline_editing_forms($form_id, $args) {
+  $forms = array();
+  if(!(strpos($form_id, 'inline_editing') === false)) {
+    $forms[$form_id]['callback'] = 'inline_editing_field_widget_form';
+    $forms[$form_id]['callback arguments'] = $args;
+  }
+  return $forms;
+}
+
+/**
+ * Form callback returning the field_widget in a form.
+ */
+function inline_editing_field_widget_form($form, &$form_state, $entity_type, $entity, $field, $instance, $langcode) {
+  //Set the widget form
+  $form += array('#parents' => array());
+  $items = $entity->{$field['field_name']};
+  $items = isset($items[$langcode]) ? $items[$langcode] : array();
+  $widget_form = field_default_form($entity_type, $entity, $field, $instance, $langcode, $items, $form, $form_state);
+  $form += $widget_form;
+  
+  // Set the base properties of the form.
+  list($id, $vid, $bundle) = entity_extract_ids($entity_type, $entity);
+  $form['#entity_type'] = $entity_type;
+  $form['#bundle'] = $bundle;
+  $form['#langcode'] = $langcode;
+  $form['#entity_id'] = $id;
+  $form['#field_name'] = $field['field_name'];
+  
+  // Wrap the whole form into a wrapper
+  $wrapper_id = drupal_html_id('inline-editing-' . $field['field_name'] . '-' . $bundle . '-' . $id);
+  $form['#prefix'] = '<div id="' . $wrapper_id . '" class="inline-editing-form-wrapper">';
+  $form['#suffix'] = '</div>';
+  
+  //add a class to the form
+  $form['#attributes'] = array(
+    'class' => array('inline-editing'),
+  ); 
+  
+  //add submit action
+  $ajax = array(
+    'callback' => 'inline_editing_js1',
+    'wrapper' => $wrapper_id,
+    'effect' => 'fade',
+    'event' => 'click',
+    'progress' => array(
+      'type' => 'throbber',
+      'message' => t('submitting changes'),
+    ),
+  );
+  $form['form_actions'] = array(
+    '#type' => 'actions',
+  );
+  $form['form_actions']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit Changes'),
+    '#submit' => array('inline_editing_field_widget_form_submit'),
+    '#limit_validation_errors' => array($form['#parents']),  
+  );
+  
+  // Set the IDs of the entity.
+  $info = entity_get_info($entity_type);
+  foreach (array('id', 'revision', 'bundle') as $key) {
+    // Objects being created might not have id/vid yet.
+    $id = isset($entity->{$info['entity keys']['id']}) ? $entity->{$info['entity keys']['id']} : NULL;
+    if (isset($info['entity keys'][$key]) && isset($entity->{$info['entity keys'][$key]})) {
+      $form[$info['entity keys'][$key]] = array(
+        '#type' => 'value',
+        '#value' => $entity->{$info['entity keys'][$key]},
+      );
+    }
+  }
+
+  return $form;
+}
+
+/**
+ * Form submit callback.
+ */
+function inline_editing_field_widget_form_submit($form, $form_state) {
+  $entity_type = $form['#entity_type'];
+  $id = $form['#entity_id'];
+  $entities = entity_load($entity_type, array($id));
+  $entity = $entities[$id];
+  entity_form_submit_build_entity($entity_type, $entity, $form, $form_state);
+  $result = entity_save($entity_type, $entity);
+  $form_state['rebuild'] = true;
+}
+
+/**
+ * Javascript call back for ajax framework
+ * returns form when form submit action is triggered
+ * @param array $form
+ * @param array $form_state
+ */
+function inline_editing_js1($form, $form_state) {
+  return '';//$form;
+}
+
+/**
+ * Helper function returns array of formatters for a field type.
+ * @param string $field_type
+ *   The field type as defined in hook_field_info()
+ *   
+ * @return
+ *   array of formatters as 'id'=>'label' if there are any
+ *   boolean FALSE if there are no formatters defined for the field type
+ */
+function inline_editing_get_formatters($field_type) {
+  $types = field_info_formatter_types();
+  $options = array();
+  foreach($types as $name=>$formatter) {
+    if ((in_array($field_type, $formatter['field types'])) && (!($name == 'inline_editing'))) {
+      $options[$name] = $formatter['label'];
+    }
+  }
+  if (empty($options)) {
+    return false;
+  }
+  else {
+    return $options;
+  }
+}

@@ -1,0 +1,5 @@
+name = Cookie Monster
+description = Provides api and rules to create secure and flexible cookies and using them
+core = 7.x
+dependencies[] = rules
+files[] = cookie_monster.rules.inc

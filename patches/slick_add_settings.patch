@@ -1,0 +1,49 @@
+diff --git a/sites/all/modules/contrib/slick/slick.module b/sites/all/modules/contrib/slick/slick.module
+index ea3f6fd..f3c3d3a 100644
+--- a/sites/all/modules/contrib/slick/slick.module
++++ b/sites/all/modules/contrib/slick/slick.module
+@@ -283,7 +283,7 @@ function slick_library() {
+     'website' => 'http://kenwheeler.github.io/slick/',
+     'version' => '1.3.2',
+     'js' => array(
+-      $slick_library_path . '/slick/slick.js' => array('group' => JS_DEFAULT),
++      $slick_library_path . '/slick/slick.min.js' => array('group' => JS_DEFAULT),
+     ),
+     'css' => array(
+       $slick_library_path . '/slick/slick.css' => array('group' => CSS_DEFAULT),
+diff --git a/sites/all/modules/contrib/slick/slick_plugin_style_slick.inc b/sites/all/modules/contrib/slick/slick_plugin_style_slick.inc
+index 3e95913..7465656 100644
+--- a/sites/all/modules/contrib/slick/slick_plugin_style_slick.inc
++++ b/sites/all/modules/contrib/slick/slick_plugin_style_slick.inc
+@@ -37,6 +37,7 @@ class slick_plugin_style_slick extends views_plugin_style {
+       '#title' => t('Settings'),
+       '#type' => 'fieldset',
+       '#collapsible' => FALSE,
++      '#tree' => TRUE,
+     );
+ 
+     foreach ($options as $name => $values) {
+@@ -44,7 +45,7 @@ class slick_plugin_style_slick extends views_plugin_style {
+         '#title' => $values['title'],
+         '#description' => $values['description'],
+         '#type' => ($values['type'] == 'boolean') ? 'checkbox' : 'textfield',
+-        '#default_value' => $this->options['slick_settings'][$name],
++        '#default_value' => (!empty($this->options['slick_settings'][$name])) ? $this->options['slick_settings'][$name] : $values['default'],
+       );
+     }
+   }
+diff --git a/sites/all/modules/contrib/slick/theme/slick.theme.inc b/sites/all/modules/contrib/slick/theme/slick.theme.inc
+index bbef2cc..4bcf635 100644
+--- a/sites/all/modules/contrib/slick/theme/slick.theme.inc
++++ b/sites/all/modules/contrib/slick/theme/slick.theme.inc
+@@ -86,7 +86,9 @@ function template_preprocess_slick_carousel(&$variables) {
+ 
+   // Set settings as data attributes.
+   foreach ($settings as $key => $value) {
+-    $variables['attributes_array']['data-' . $key] = $value;
++    if (!empty($value)) {
++      $variables['attributes_array']['data-' . $key] = $value;
++    }
+   }
+ 
+   // Add slick options to js.

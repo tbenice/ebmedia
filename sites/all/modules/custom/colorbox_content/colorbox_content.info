@@ -1,0 +1,6 @@
+name = Colorbox Content 
+description = Provides a simple way to pull content/block/etc into a colorbox.
+package = Other
+core = 7.x
+dependencies[] = colorbox
+scripts[] = js/colorbox_content.js

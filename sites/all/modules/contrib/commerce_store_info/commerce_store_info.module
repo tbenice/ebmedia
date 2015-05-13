@@ -1,0 +1,16 @@
+<?php
+
+function commerce_store_info_menu() {
+  $items['admin/commerce/config/store_info'] = array(
+    'title' => 'Store information',
+    'description' => 'Configure information about your store, for use in Replacement Patterns and global variables',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_store_info'),
+    'access arguments' => array('configure store'),
+    'file' => 'commerce_store_info.admin.inc',
+    'weight' => 1,
+  );
+
+  return $items;
+}
+

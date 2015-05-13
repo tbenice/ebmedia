@@ -1,0 +1,6 @@
+@CHARSET "UTF-8";
+
+div.inline-editing-form-wrapper {
+	display: none;
+	z-index: 100;
+}

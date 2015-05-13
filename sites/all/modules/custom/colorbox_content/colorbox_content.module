@@ -1,0 +1,18 @@
+<?php
+/**
+ * @file colorbox_context.module
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function colorbox_content_menu() {
+  $items['colorbox-content-load'] = array(
+    'type' => MENU_CALLBACK,
+    'title' => t('colorbox content load'),
+    'access callback' => TRUE,
+    'page callback' => 'colorbox_content_load',
+    'file' => 'includes/colorbox_content.pages.inc',
+  );
+  return $items;
+}

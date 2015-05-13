@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the Get Export feature.
+ */
+
+include_once 'get_export.features.inc';

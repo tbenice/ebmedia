@@ -1,0 +1,353 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the Scout Tours module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function scout_trails_schema() {
+  $schema['scout_trail'] = array(
+    'description' => 'The base table for scout trails.',
+    'fields' => array(
+      'trail_id' => array(
+        'description' => 'The primary identifier for a scout trail.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'type' => array(
+        'description' => 'The module defined type of this scout trail.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'language' => array(
+        'description' => 'The {languages}.language of this scout trail.',
+        'type' => 'varchar',
+        'length' => 12,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'title' => array(
+        'description' => 'The title of this scout trail, always treated as non-markup plain text.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'description' => array(
+        'description' => 'A basic description of this scout trail.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'uid' => array(
+        'description' => 'The {users}.uid that owns this scout trail; initially, this is the user that created it.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'tag' => array(
+        'description' => 'A tag used to group/sort scout trails in the admin interface',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'created' => array(
+        'description' => 'The Unix timestamp when the scout trail was created.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'changed' => array(
+        'description' => 'The Unix timestamp when the scout trail was most recently saved.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'tnid' => array(
+        'description' => 'The translation set id for this scout trail, which equals the scout trail id of the source post in each set.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'translate' => array(
+        'description' => 'A boolean indicating whether this translation page needs to be updated.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      // exportable status (not published status)
+      'status' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        // Set the default to ENTITY_CUSTOM without using the constant as it is
+       // not safe to use it at this point.
+        'default' => 0x01,
+        'size' => 'tiny',
+        'description' => 'The exportable status of the entity.',
+      ),
+       'module' => array(
+        'description' => 'The name of the providing module if the entity has been defined in code.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('trail_id'),
+    'unique keys' => array(
+      'title' => array('title'),
+    ),
+    'indexes'     => array(
+      'trail_id'       => array('trail_id'),
+      'trail_type'     => array('type'),
+      'trail_created'  => array('created'),
+      'trail_changed'  => array('changed'),
+      'trail_exported' => array('status'),
+      'uid'            => array('uid'),
+      'tnid'           => array('tnid'),
+      'translate'      => array('translate'),
+   ),
+    'foreign keys' => array(
+      'scout_trail_author' => array(
+        'table' => 'users',
+        'columns' => array('uid' => 'uid'),
+      ),
+      'type' => array('scout_trail_type' => 'type'),
+    ),
+  );
+
+  $schema['scout_trail_type'] = array(
+    'description' => 'Stores information about defined scout trail types.',
+    'fields' => array(
+      'id' => array(
+        'type' => 'serial',
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique scout_trail type identifier.',
+      ),
+      'type' => array(
+        'description' => 'The machine-readable name of this scout trail type.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+      ),
+      'label' => array(
+        'description' => 'The human-readable name of this scout trail type.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'description' => array(
+        'description' => 'A brief description of this type.',
+        'type' => 'text',
+        'not null' => TRUE,
+        'size' => 'medium',
+        'translatable' => TRUE,
+      ),
+      // exportable status (not published status)
+      'status' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        // Set the default to ENTITY_CUSTOM without using the constant as it is
+       // not safe to use it at this point.
+        'default' => 0x01,
+        'size' => 'tiny',
+        'description' => 'The exportable status of the entity.',
+      ),
+       'module' => array(
+        'description' => 'The name of the providing module if the entity has been defined in code.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+   ) + entity_exportable_schema_fields(),
+    'primary key' => array('id'),
+    'unique keys' => array(
+      'type' => array('type'),
+    ),
+  );
+
+  $schema['scout_tip'] = array(
+    'description' => 'The base table for scout tips.',
+    'fields' => array(
+      'tip_id' => array(
+        'description' => 'The primary identifier for a scout tip.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'type' => array(
+        'description' => 'The module defined type of this scout trail tip.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'language' => array(
+        'description' => 'The {languages}.language of this node.',
+        'type' => 'varchar',
+        'length' => 12,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'title' => array(
+        'description' => 'The title of this scout trail tip, always treated as non-markup plain text.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'uid' => array(
+        'description' => 'The {users}.uid that owns this scout tip; initially, this is the user that created it.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'tag' => array(
+        'description' => 'A tag used to group/sort scout tips in the admin interface.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'created' => array(
+        'description' => 'The Unix timestamp when the scout tip was created.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'changed' => array(
+        'description' => 'The Unix timestamp when the scout tip was most recently saved.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'tnid' => array(
+        'description' => 'The translation set id for this scout tip, which equals the scout tip id of the source post in each set.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'translate' => array(
+        'description' => 'A boolean indicating whether this translation page needs to be updated.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      // exportable status (not published status)
+      'status' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        // Set the default to ENTITY_CUSTOM without using the constant as it is
+       // not safe to use it at this point.
+        'default' => 0x01,
+        'size' => 'tiny',
+        'description' => 'The exportable status of the entity.',
+      ),
+       'module' => array(
+        'description' => 'The name of the providing module if the entity has been defined in code.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('tip_id'),
+    'indexes'     => array(
+      'tip_id'       => array('tip_id'),
+      'tip_type'     => array('type'),
+      'tip_created'  => array('created'),
+      'tip_changed'  => array('changed'),
+      'tip_exported' => array('status'),
+      'uid'           => array('uid'),
+      'tnid'          => array('tnid'),
+      'translate'     => array('translate'),
+   ),
+    'unique keys' => array(
+      'title' => array('title'),
+    ),
+    'foreign keys' => array(
+      'scout_tip_author' => array(
+        'table' => 'users',
+        'columns' => array('uid' => 'uid'),
+      ),
+      'type' => array('scout_tip_type' => 'type'),
+
+    ),
+  );
+
+  $schema['scout_tip_type'] = array(
+    'description' => 'Stores information about defined scout_tip types.',
+    'fields' => array(
+      'id' => array(
+        'type' => 'serial',
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique scout_tip type ID.',
+      ),
+      'type' => array(
+        'description' => 'The machine-readable name of this scout_tip_type.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'label' => array(
+        'description' => 'The human-readable name of this scout_tip_type.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'description' => array(
+        'description' => 'A brief description of this type.',
+        'type' => 'text',
+        'not null' => TRUE,
+        'size' => 'medium',
+        'translatable' => TRUE,
+      ),
+      // exportable status (not published status)
+      'status' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        // Set the default to ENTITY_CUSTOM without using the constant as it is
+       // not safe to use it at this point.
+        'default' => 0x01,
+        'size' => 'tiny',
+        'description' => 'The exportable status of the entity.',
+      ),
+       'module' => array(
+        'description' => 'The name of the providing module if the entity has been defined in code.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+    ) + entity_exportable_schema_fields(),
+    'primary key' => array('id'),
+    'unique keys' => array(
+      'type' => array('type'),
+    ),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_install().
+ */
+function scout_trails_install() {
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function scout_trails_uninstall() {
+  field_attach_delete_bundle('scout_tip', 'scout_tip');
+  field_attach_delete_bundle('scout_trail', 'scout_trail');
+}

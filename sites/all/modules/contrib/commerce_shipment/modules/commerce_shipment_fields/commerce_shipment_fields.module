@@ -1,0 +1,24 @@
+<?php
+
+/*
+ * Implements hook_form_FORM_ID_alter().
+ *
+ * Add a 'shippable' checkbox to the product type edit form.
+ */
+function commerce_shipment_fields_form_commerce_product_ui_product_type_form_alter(&$form, &$form_state, $form_id) {
+  $form['product_type']['shippable'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('This is a shippable product type.'),
+    '#default_value' => isset($form_state['product_type']['shippable']) ? $form_state['product_type']['shippable'] : 0,
+  );
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function commerce_shipment_fields_views_api() {
+  return array(
+    'api' => 3,
+    'path' => drupal_get_path('module', 'commerce_shipment_fields') . '/includes/views',
+  );
+}

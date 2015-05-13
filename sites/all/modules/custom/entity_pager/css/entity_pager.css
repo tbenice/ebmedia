@@ -1,0 +1,23 @@
+@CHARSET "UTF-8";
+
+.entity-pager-js {
+	display: none;
+	position: fixed;
+	top: 500px;
+	width: 100%;
+}
+
+
+.entity-pager-js #entity-pager-item-previous {
+  float: left;
+  width: 200px;
+}
+
+.entity-pager-js #entity-pager-item-next {
+  float: right;
+  width: 200px;
+}
+
+.entity-pager-js.entity-pager-show {
+	display: block;
+}

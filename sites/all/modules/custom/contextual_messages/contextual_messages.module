@@ -1,0 +1,344 @@
+<?php 
+/**
+ * @file
+ * The Contextual Messages module allows admins to add 
+ * messages to block configurations, which will then be
+ * displayed upon page-load, hover, or click events 
+ * depending on how they are configured.
+ */
+
+/**
+ * Implements hook_permission().
+ */
+function contextual_messages_permission() {
+  return array(
+    'administer contextual messages' => array(
+      'title' => t('Administer Contextual Messages'),
+      'description' => t('Add messages that popup in the context of different content on your site.')
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function contextual_messages_menu() {
+  $items['admin/config/content/contextual-messages'] = array(
+    'type' => MENU_NORMAL_ITEM,
+    'title' => t('Contextual Messages'),
+    'description' => t('Configure messages to appear in the context of content on your site'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('contextual_messages_admin_form', 'nodes'),
+    'access arguments' => array('administer contextual messages'),
+    'file' => 'includes/contextual_messages.admin.inc',
+  );  
+  $items['admin/config/content/contextual-messages/nodes'] = array(
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'title' => t('Nodes'),
+    'description' => t('Configure messages to appear in the context of nodes on your site'),
+    'access arguments' => array('administer contextual messages'),
+    'file' => 'includes/contextual_messages.admin.inc',
+  );
+  $items['admin/config/content/contextual-messages/nodes/%node_type'] = array(
+    'type' => MENU_CALLBACK,
+    'title' => t('Nodes'),
+    'description' => t('Configure messages to appear in the context of nodes on your site'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('contextual_messages_admin_form', 4, 5),
+    'access arguments' => array('administer contextual messages'),
+    'file' => 'includes/contextual_messages.admin.inc',
+  );
+  $items['admin/config/content/contextual-messages/views'] = array(
+    'type' => MENU_LOCAL_TASK,
+    'title' => t('Views'),
+    'description' => t('Configure messages to appear in the context of views on your site'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('contextual_messages_admin_form', 4),
+    'access arguments' => array('administer contextual messages'),
+    'file' => 'includes/contextual_messages.admin.inc',
+  );
+  $items['admin/config/content/contextual-messages/views/%contextual_messages_view'] = array(
+    'type' => MENU_CALLBACK,
+    'title' => t('Views'),
+    'description' => t('Configure messages to appear in the context of views on your site'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('contextual_messages_admin_form', 4, 5),
+    'access arguments' => array('administer contextual messages'),
+    'file' => 'includes/contextual_messages.admin.inc',
+  );
+  $items['admin/config/content/contextual-messages/blocks'] = array(
+    'type' => MENU_LOCAL_TASK,
+    'title' => t('Blocks'),
+    'description' => t('Configure messages to appear in the context of blocks on your site'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('contextual_messages_admin_form', 4),
+    'access arguments' => array('administer contextual messages'),
+    'file' => 'includes/contextual_messages.admin.inc',
+  );
+  $items['admin/config/content/contextual-messages/blocks/%contextual_messages_block'] = array(
+    'type' => MENU_CALLBACK,
+    'title' => t('Blocks'),
+    'description' => t('Configure messages to appear in the context of blocks on your site'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('contextual_messages_admin_form', 4, 5),
+    'access arguments' => array('administer contextual messages'),
+    'file' => 'includes/contextual_messages.admin.inc',
+  ); 
+  $items['admin/config/content/contextual-messages/fields'] = array(
+    'type' => MENU_LOCAL_TASK,
+    'title' => t('Fields'),
+    'description' => t('Configure messages to appear in the context of field instances on your site'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('contextual_messages_admin_form', 4),
+    'access arguments' => array('administer contextual messages'),
+    'file' => 'includes/contextual_messages.admin.inc',
+  );
+  $items['admin/config/content/contextual-messages/fields/%contextual_messages_field'] = array(
+    'type' => MENU_CALLBACK,
+    'title' => t('Fields'),
+    'description' => t('Configure messages to appear in the context of fields on your site'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('contextual_messages_admin_form', 4, 5),
+    'access arguments' => array('administer contextual messages'),
+    'file' => 'includes/contextual_messages.admin.inc',
+  );
+  
+  return $items;
+}
+
+/**
+ * Custom loader function for views.
+ * @param string $view_name
+ */
+function contextual_messages_view_load($view_name) {
+  return views_get_view($view_name);
+}
+
+function _contextual_messages_block_info_get() {
+  $blocks = drupal_static(__FUNCTION__);
+
+  if (empty($blocks)) {
+    $cid = 'contextual_messages_block_info';
+
+    $cache = cache_get($cid);
+
+    if (!isset($cache->data)) {
+      $blocks = module_invoke_all('block_info');
+      // Save to the cache.
+      cache_set($cid, $blocks, 'cache', CACHE_TEMPORARY);
+    }
+    else {
+      $blocks = $cache->data;
+    }
+  }
+
+  return $blocks;
+}
+
+/**
+ * Custom loader function for blocks.
+ * @param string $delta
+ */
+function contextual_messages_block_load($delta) {
+  $blocks = _contextual_messages_block_info_get();
+  $object = new stdClass();
+  $object->delta = $delta;
+  // Only support the first info for a block with multiple infos.
+  $object->info = (!is_array($blocks[$delta]['info'])) ? $blocks[$delta]['info'] : $blocks[$delta]['info'][0];
+  return $object;
+}
+
+/**
+ * Custom loader function for loading entity/bundle info.
+ * Returns and object containing entity type and bundle
+ * name as passed from the main level of the admin form
+ * for fields.
+ * @param string $data
+ *   The enitity type and bundle name separated by "__".
+ */
+function contextual_messages_field_load($data) {
+  $info = explode('__', $data);
+  $object = new stdClass();
+  $object->entity_type = $info[0];
+  $object->bundle_name = $info[1];
+  return $object;
+}
+
+/**
+ * Implements hook_node_view_alter().
+ * Add a post render callback.
+ *
+ * @param array $build
+ */
+function contextual_messages_node_view_alter(&$build) {
+  $build['#post_render'][] = 'contextual_messages_node_post_render';
+}
+
+/**
+ * Add contextual messages to selected nodes.
+ *
+ * @param string $markup
+ * @param array $build
+ */
+function contextual_messages_node_post_render($markup, $build) {
+  $result = $markup;
+  //use static var to ensure that only 1 message is attached
+  //per type
+  $messages_processed = &drupal_static(__FUNCTION__);
+  if(!is_array($messages_processed)) {
+    $messages_processed = array();
+  }
+  
+  $messages = variable_get('contextual_messages');
+  $messages = isset($messages['nodes'][$build['#bundle']]) ? $messages['nodes'][$build['#bundle']] : null;
+  if(!isset($messages) || (in_array($build['#bundle'], $messages_processed))) {
+    return $result;
+  }
+  else {
+    $messages_processed[] = $build['#bundle'];
+    if($messages['use_message'] == 0) {
+      return $result;
+    }
+    else {
+      $message = check_markup($messages['message']['value'], $messages['message']['format']);
+      return theme('contextual_message', array(
+          'markup' => $markup,
+          'id' => $build['#bundle'],
+          'message' => $message,
+          'event' => $messages['event'],
+        )
+      );
+    }
+  }
+  return $result;
+}
+
+/**
+ * Add contextual messages to selected fields.
+ * 
+ * @param array $vars
+ */
+function contextual_messages_preprocess_field(&$vars) {
+  //use static var to ensure that only 1 message is attached
+  //per type
+  $messages_processed = &drupal_static(__FUNCTION__);
+  if(!is_array($messages_processed)) {
+    $messages_processed = array();
+  }
+  
+  $messages = variable_get('contextual_messages');
+  $element = $vars['element']['#entity_type'] . '_' . $vars['element']['#bundle'] . '_' . $vars['element']['#field_name'];
+  $messages = isset($messages['fields'][$element]) ? $messages['fields'][$element] : null;
+  if(!isset($messages) || (in_array($element, $messages_processed))) {
+    return;
+  }
+  else {
+    $messages_processed[] = $element;
+    if($messages['use_message'] == 0) {
+      return;
+    }
+    else {
+      $message = check_markup($messages['message']['value'], $messages['message']['format']);
+      $output = render($vars['element']);
+      unset($vars['element']['items']);
+      $vars['items'][0]['#markup'] = theme('contextual_message', array(
+          'markup' => $output,
+          'id' => $element,
+          'message' => $message,
+          'event' => $messages['event']
+        )
+      );
+    }
+  }  
+}
+
+/**
+ * Add contextual messages to selected views.
+ * 
+ * @param string $view
+ * @param array $output
+ */
+function contextual_messages_views_post_render(&$view, &$output) {//, &$cache) {
+  //use static var to ensure that only 1 message is attached
+  //per type
+  $messages_processed = &drupal_static(__FUNCTION__);
+  if(!is_array($messages_processed)) {
+    $messages_processed = array();
+  }
+  
+  $messages = variable_get('contextual_messages');
+  $messages = isset($messages['views'][$view->name . '_' . $view->current_display]) ? 
+    $messages['views'][$view->name . '_' . $view->current_display] 
+    : null;
+  if(!isset($messages) || (in_array($view->name . '_' . $view->current_display, $messages_processed))) {
+    return;
+  }
+  else {
+    $messages_processed[] = $view->name . '_' . $view->current_display;
+    if($messages['use_message'] == 0) {
+      return;
+    }
+    else {
+      $message = check_markup($messages['message']['value'], $messages['message']['format']);
+      $output = theme('contextual_message', array(
+          'markup' => $output, 
+          'id' => $view->name . '_' . $view->current_display, 
+        	'message' => $message, 
+          'event' => $messages['event'],
+        )
+      );
+    }
+  }
+}
+
+/**
+ * Add contextual messages to selected blocks.
+ *
+ * @param array $data
+ * @param array $block
+ */
+function contextual_messages_block_view_alter(&$data, $block) {
+  //use static var to ensure that only 1 message is attached
+  //per type
+  $messages_processed = &drupal_static(__FUNCTION__);
+  if(!is_array($messages_processed)) {
+    $messages_processed = array();
+  }
+  
+  $messages = variable_get('contextual_messages');
+  $messages = isset($messages['blocks'][$block->delta]) ? $messages['blocks'][$block->delta] : null;
+  if(!isset($messages) || (in_array($block->delta, $messages_processed))) {
+    return;
+  }
+  else {
+    $messages_processed[] = $block->delta;
+    if($messages['use_message'] == 0) {
+      return;
+    }
+    else {
+      $message = check_markup($messages['message']['value'], $messages['message']['format']);
+      $content = $data['content'];
+      unset($data['content']);
+      $data['content']['#markup'] = theme('contextual_message', array(
+        	'markup' => render($content), 
+        	'id' => $block->delta, 
+          'message' => $message, 
+          'event' => $messages['event'],
+        )
+      );
+    }
+  }
+}
+
+/**
+ * Implements hook_theme().
+ * 
+ * @return array $themes.
+ */
+function contextual_messages_theme() {
+  $themes['contextual_message'] = array(
+    'variables' => array('message' => null, 'markup' => null, 'id' => null, 'event' => null),
+    'file' => 'theme/contextual_messages.theme.inc',
+  );
+  return $themes;
+}

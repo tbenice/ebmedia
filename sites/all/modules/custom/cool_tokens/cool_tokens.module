@@ -1,0 +1,791 @@
+<?php
+/**
+ * @file
+ * cool_tokens.module
+ */
+
+ /**
+ * Implements hook_permission().
+ */
+function cool_tokens_permission() {
+
+  $permissions = array();
+
+  $permissions['administer Cool tokens'] = array(
+    'title' => t('Administer Cool Tokens'),
+    'description' => t('Access to Cool Tokens Admin Functions'),
+  );
+  
+  return $permissions;
+}
+
+/**
+ * Implements hook_entity_info().
+ */
+function cool_tokens_entity_info() {
+
+  $entities = array();
+
+  $entities['cool_token'] = array(
+    'label' => t('Cool Token'),
+    'entity class' => 'CoolToken',
+    'controller class' => 'CoolTokenController',
+    'base table' => 'cool_tokens',
+    'fieldable' => TRUE,
+    'entity keys' => array(
+      'id' => 'tkid',
+      'bundle' => 'type',
+    ),
+    'bundle keys' => array(
+        'bundle' => 'type',
+      ),
+    'bundles' => array(),
+    'load hook' => 'cool_tokens_token_load',
+    'uri callback' => 'entity_class_uri',
+    'label callback' => 'entity_class_label',
+    'module' => 'cool_tokens',
+    'access callback' => 'cool_tokens_token_access',
+    'view modes' => array(
+      'full' => array(
+        'label' => t('All Cool Tokens'),
+        'custom settings' => FALSE,
+      ),
+    ),
+    'views controller class' => 'EntityDefaultViewsController',
+    'admin ui' => array(
+      'title' => t('Cool Tokens'),
+      'path' => 'admin/structure/cool-tokens',
+      'file' => 'includes/cool_tokens.admin.inc',
+      'controller class' => 'CoolTokenUIController',
+      'menu wildcard' => '%cool_tokens_token',
+    ),
+  );
+  $entities['cool_tokens_type'] = array(
+    'label' => t('Cool Tokens Type'),
+    'entity class' => 'CoolTokensType',
+    'controller class' => 'CoolTokensTypeController',
+    'base table' => 'cool_tokens_type',
+    'fieldable' => FALSE,
+    'bundle of' => 'cool_token',
+    'exportable' => TRUE,
+    'entity keys' => array(
+      'id' => 'type',
+      'label' => 'label',
+    ),
+    'module' => 'cool_tokens',
+    'access callback' => 'cool_tokens_token_access',
+    'view modes' => array(
+      'full' => array(
+        'label' => t('All Cool Tokens Types'),
+        'custom settings' => FALSE,
+      ),
+    ),
+    'views controller class' => 'EntityDefaultViewsController',
+    'admin ui' => array(
+      'path' => 'admin/structure/cool-tokens/types',
+      'file' => 'includes/cool_tokens.admin.inc',
+      'controller class' => 'CoolTokensTypeUIController',
+      'menu wildcard' => '%cool_tokens_type',
+    ),
+  );
+
+  return $entities;
+}
+
+/**
+* Implements hook_entity_info_alter().
+*/
+function cool_tokens_entity_info_alter(&$entity_info) {
+  foreach (cool_tokens_types() as $type => $info) {
+    $entity_info['cool_token']['bundles'][$type] = array(
+      'label' => $info->label,
+      'admin' => array(
+        'path' => 'admin/structure/cool-tokens/types/manage/%cool_tokens_type',
+        'real path' => 'admin/structure/cool-tokens/types/manage/' . $type,
+        'bundle argument' => 5,
+      ),
+    );
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function cool_tokens_menu() {
+  $items = array();
+  $items['tokens/redeemcodeurl'] = array( 
+    'title' => 'Redeem Code',  // Required
+    'page callback' => 'cool_tokens_urlredeem',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+    'file' => 'includes/cool_tokens.pages.inc',
+  );
+  return $items;
+}
+
+/**
+ * Returns a themed table for adding tokens.
+ */
+function cool_tokens_type_table() {
+  $types = cool_tokens_types();
+  $token = entity_get_info('cool_token');
+  foreach ($types as $name=>$info) {
+    $content[$name]['title'] = 'Add ' . $name . ' type ' . $info->label;
+    $content[$name]['href'] = $token['admin ui']['path'] . '/add/' . $name;
+    $content[$name]['description'] = $info->description;
+    $content[$name]['localized_options'] = array();
+  }
+  return theme('token_add_list', array('content' => $content));
+}
+
+/**
+ * Returns HTML for a list of available token types for node creation.
+ *
+ * @param $variables
+ *   An associative array containing:
+ *   - content: An array of token types.
+ *
+ * @ingroup themeable
+ */
+function theme_token_add_list($variables) {
+  $content = $variables['content'];
+  $output = '';
+
+  if ($content) {
+    $output = '<dl class="token-type-list">';
+    foreach ($content as $item) {
+      $output .= '<dt>' . l($item['title'], $item['href'], $item['localized_options']) . '</dt>';
+      $output .= '<dd>' . filter_xss_admin($item['description']) . '</dd>';
+    }
+    $output .= '</dl>';
+  }
+  else {
+    $output = '<p>' . t('You have not created any token types yet. Go to the <a href="@create-content">token type creation page</a> to add a new token type.', array('@create-content' => url('admin/structure/cool-tokens/types/add'))) . '</p>';
+  }
+  return $output;
+}
+
+/**
+ * Form factory for token type forms.
+ * @param string $type
+ *   Token type machine name 
+ * @param stdClass $entity
+ *   The entity to create a form for
+ * @param string $op
+ *   The operation (add, edit, etc). Not used currently.
+ */
+function cool_tokens_forms_wrapper($type, $entity, $op='add') {
+  if (!isset($entity)) {
+    $entity = cool_tokens_default_entity($type);
+  }
+  else {
+    $type = $entity->type;
+  }
+  $form = drupal_get_form('cool_token_edit_' . $type . '_form', $entity);
+  return $form;
+}
+
+/**
+ * Returns a default token entity.
+ * @param string $type
+ *   The token type to create.
+ * @return CoolToken $token
+ *   An instantiated token, unsaved.
+ */
+function cool_tokens_default_entity($type) {
+  $token = new CoolToken();
+  $token->type = $type;
+  $token->is_new = TRUE;
+  $token->title = '';
+  $token->description = '';
+  $token->set_unlimited = 0;
+  $token->max_uses = NULL;
+  $token->active = 0;
+  $token->activates = NULL;
+  $token->set_expire = 0;
+  $token->expires = NULL;
+  $token->status = 1;
+  $token->module = 'cool_tokens';
+  return $token;
+}
+
+/**
+ * Implements hook_forms().
+ *
+ * All cool_tokens forms share the same form handler.
+ */
+function cool_tokens_forms() {
+  $forms = array();
+  if ($types = cool_tokens_types()) {
+    foreach (array_keys($types) as $type) {
+      $forms['cool_token_edit_' . $type . '_form']['callback'] = 'cool_token_form';
+    }
+  }
+  return $forms;
+}
+
+/**
+ * Implements hook_entity_property_info().
+ */
+function cool_tokens_entity_property_info() {
+
+  $properties = array();
+
+  $properties['tkid'] = array(
+    'label' => t('tkid'),
+    'type' => 'integer',
+    'description' => t('The ID of the token'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer cool tokens',
+    'required' => true,
+    'schema field' => 'tkid',
+  );
+  $properties['title'] = array(
+    'label' => t('Title'),
+    'type' => 'text',
+    'description' => t('The short title for the token'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer cool tokens',
+    'schema field' => 'title',
+  );
+  $properties['description'] = array(
+    'label' => t('Description'),
+    'type' => 'text',
+    'description' => t('The short description of the token'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer cool tokens',
+    'schema field' => 'description',
+  );
+  $properties['activates'] = array(
+    'label' => t('Activates'),
+    'type' => 'integer',
+    'description' => t('When the token activates'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer cool tokens',
+    'schema field' => 'activates',
+  );
+  $properties['expires'] = array(
+    'label' => t('Expires'),
+    'type' => 'integer',
+    'description' => t('When the token expires'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer cool tokens',
+    'schema field' => 'expires',
+  );
+  $properties['max_uses'] = array(
+    'label' => t('Max Uses'),
+    'type' => 'integer',
+    'description' => t('The number of times a key in the token may be used'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer cool tokens',
+    'schema field' => 'max_uses',
+  );
+
+  return array('cool_token' => array('properties' => $properties));
+}
+
+/**
+ * Access function for the entity.
+ * @param string $op
+ * @param stdClass $entity (variable for the entity)
+ * @param stdClass $account
+ * @param string $entity_type
+ */
+function cool_tokens_token_access($op, $ft_token, $account = null, $entity_type = null) {
+
+  if (!isset($account)) {
+    global $user;
+    $account = $user;
+  }
+  switch ($op) {
+    default: return user_access('administer cool tokens');
+  }
+}
+
+/**
+ * Implements hook_cron_job_scheduler_info().
+ */
+function cool_tokens_cron_job_scheduler_info() {
+
+  $schedulers = array();
+
+  $schedulers['ft_token_activate'] = array(
+    'worker callback' => 'cool_tokens_activate_token',
+  );
+  $schedulers['ft_token_expire'] = array(
+    'worker callback' => 'cool_tokens_expire_token',
+  );
+
+  return $schedulers;
+}
+
+/**
+ * Job scheduler worker callback for 'token_activate'.
+ * Sets a token to active.
+ * @param array $job
+ */
+function cool_tokens_activate_token($job) {
+  $ft_token = cool_tokens_token_load($job['id']);
+  $ft_token->activate();
+}
+
+/**
+ * Job scheduler worker callback for 'token_expire'.
+ * Sets a token to not active.
+ * @param array $job
+ */
+function cool_tokens_expire_token($job) {
+  $ft_token = cool_tokens_token_load($job['id']);
+  $ft_token->expire();
+}
+
+/**
+* Load a token.
+*/
+function cool_tokens_token_load($tkid, $reset = FALSE) {
+  $ft_tokens = cool_tokens_token_load_multiple(array($tkid), array(), $reset);
+  return reset($ft_tokens);
+}
+
+/**
+* Load multiple tokens based on certain conditions.
+*/
+function cool_tokens_token_load_multiple($tkids = array(), $conditions = array(), $reset = FALSE) {
+  return entity_load('cool_token', $tkids, $conditions, $reset);
+}
+
+/**
+* Save token.
+*/
+function cool_tokens_token_save($ft_token) {
+  entity_save('cool_token', $ft_token);
+}
+
+/**
+* Delete single token.
+*/
+function cool_tokens_token_delete($ft_token) {
+  entity_delete('cool_token', entity_id('cool_token', $ft_token));
+}
+
+/**
+* Delete multiple tokens.
+*/
+function cool_tokens_token_delete_multiple($tkids) {
+  entity_delete_multiple('cool_token', $tkids);
+}
+
+/**
+* Load FT Token Type.
+*/
+function cool_tokens_type_load($ft_tokens_type) {
+  return cool_tokens_types($ft_tokens_type);
+}
+
+/**
+* List of FT Token Types.
+*/
+function cool_tokens_types($owner_name = NULL) {
+  $ft_tokens_types = entity_load('cool_tokens_type', isset($owner_name) ? array($owner_name) : FALSE, array(), TRUE);
+  return isset($owner_name) ? reset($ft_tokens_types) : $ft_tokens_types;
+}
+
+/**
+* Save FT Token type entity.
+*/
+function cool_tokens_type_save($ft_tokens_type) {
+  entity_save('cool_tokens_type', $ft_tokens_type);
+}
+
+/**
+* Delete single FT Token type.
+*/
+function cool_tokens_type_delete($ft_tokens_type) {
+  entity_delete('cool_tokens_type', entity_id('cool_tokens_type' ,$ft_tokens_type));
+}
+
+/**
+* Delete multiple FT Token types.
+*/
+function cool_tokens_type_delete_multiple($ft_tokens_type_ids) {
+  entity_delete_multiple('cool_tokens_type', $ft_tokens_type_ids);
+}
+
+/**
+ * Implements hook_views_data_alter.
+ *
+ */
+function cool_tokens_views_data_alter(&$data) {
+
+  $data['cool_tokens']['tkid'] = array(
+    'field' => array(
+      'title' => t('Token ID'),
+      'help' => t('Token id.'),
+      'handler' => 'views_handler_field_numeric',
+    ),
+    'relationship' => array(
+      'handler' => 'views_handler_relationship',
+      'label' => t('FT Token UID'),
+      'base' => 'cool_tokens_type',
+      'base field' => 'tkid',
+      'skip base' => array(),
+    ),
+  );
+  $data['cool_tokens']['edit_link'] = array(
+   'field' => array(
+      'title' => t('Edit link'),
+      'help' => t('Provide a simple link to edit the token.'),
+      'handler' => 'views_handler_field_token_link_edit',
+    ), 
+  );
+  $data['cool_tokens']['delete_link'] = array(
+   'field' => array(
+      'title' => t('Delete link'),
+      'help' => t('Provide a simple link to delete the token.'),
+      'handler' => 'views_handler_field_token_link_delete',
+    ),  
+  );
+  $data['cool_tokens']['activates'] = array(
+    'field' => array(
+      'title' => t('Token Activation Date'),
+      'help' => t('Date that the token activates'),
+      'handler' => 'views_handler_field_token_activates_date',
+    ),
+  );
+  $data['cool_tokens']['expires'] = array(
+    'field' => array(
+      'title' => t('Token Expires Date'),
+      'help' => t('Date that the token expires'),
+      'handler' => 'views_handler_field_token_expires_date',
+    ),
+  );
+  $data['cool_tokens']['max_uses'] = array(
+    'field' => array(
+      'title' => t('Max Uses'),
+      'help' => t('Number of times a token may be used'),
+      'handler' => 'views_handler_field_numeric',
+    ),
+  );
+  $data['cool_tokens']['active'] = array(
+    'field' => array(
+      'title' => t('Active'),
+      'help' => t('Is the token active or not?'),
+      'handler' => 'views_handler_field_numeric',
+    ),
+  );
+  $data['cool_tokens']['type'] = array(
+    'field' => array(
+      'title' => t('Type'),
+      'help' => t('The token Type'),
+      'handler' => 'views_handler_field',
+    ),
+  );
+  $data['cool_tokens']['redeem'] = array(
+    'field' => array(
+      'title' => t('Redeem'),
+      'help' => t('Token Redeem Link'),
+      'handler' => 'views_handler_field_token_link_redeem',
+    ),
+  );
+  $data['cool_tokens']['type'] = array(
+    'field' => array(
+      'title' => t('Token Type'),
+      'help' => t('The token\'s bundle (type)'),
+      'handler' => 'views_handler_field',
+      'real field' => 'type',
+    ),
+    'filter' => array(
+      'title' => t('Token Type'),
+      'help' => t('Filter by token bundle (type)'),
+      'handler' => 'views_handler_filter_entity_bundle',
+    ),
+    'argument' => array(
+      'title' => t('Token Type'),
+      'help' => t('Filter by token bundle (type)'),
+      'handler' => 'views_handler_argument',
+      'real field' => 'type',
+    ),
+  );
+}
+
+/**
+ * List of available cool tokens - for options list.
+ */
+function cool_tokens_options_list() {
+  $ft_tokens = entity_load('cool_token', FALSE, array(), TRUE);
+  $options = array();
+  foreach ($ft_tokens as $ft_token) {
+    $options[$ft_token->tkid] = $ft_token->title;
+  }
+  return $options;
+}
+
+/**
+ * List of available cool tokens - for checkboxes.
+ */
+function cool_tokens_list() {
+  $ft_tokens = entity_load('cool_token', FALSE, array(), TRUE);
+  $options = array();
+  foreach ($ft_tokens as $ft_token) {
+    $options[$ft_token->tkid] = $ft_token->tkid;
+  }
+  return $options;  
+}
+
+/**
+ * List of current user's cool tokens.
+ */
+function cool_tokens_user_tokens_list($user = NULL) {
+  if (!isset($user)) {
+    global $user;
+  }
+
+  $owner_query = db_select('cool_tokens_owner')
+      ->fields('cool_tokens_owner', array('tkid'))
+      ->condition('uid', $user->uid, '=');
+
+  $owner_result = $owner_query->execute()->fetchAll();
+
+  $result = array();
+
+  foreach($owner_result as $record) {
+    $result[$record->tkid] = $record->tkid;
+  }
+
+  return $result;
+}
+
+/**
+ * List of available cool token types.
+ */
+function cool_tokens_types_available_list() {
+  $ft_tokens_types = entity_load('cool_tokens_type', FALSE, array(), TRUE);
+  $options = array();
+  foreach ($ft_tokens_types as $ft_tokens_type) {
+    $options[$ft_tokens_type->type] = $ft_tokens_type->label;
+  }
+  return $options;
+}
+
+/**
+ * List of a user's tokens.
+ */
+function cool_tokens_user_tokens_list_options($user = NULL) {
+
+  if (!isset($user)) {
+    global $user;
+  }
+
+  $selected = array();
+
+  $user_tokens = cool_tokens_user_tokens_list($user);
+  $all_tokens = cool_tokens_list();
+  foreach($all_tokens as $tkid) {
+    if(isset($user_tokens[$tkid])) {
+      $selected[$tkid] = $tkid;
+    }
+    else {
+      $selected[$tkid] = 0;
+    }
+  }
+ 
+  return $selected;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter()
+ */
+function cool_tokens_form_user_profile_form_alter(&$form, &$form_state, $form_id) {
+  if ((isset($form['#user_category'])) && ($form['#user_category'] == 'account')) {
+    $ft_tokens = cool_tokens_options_list();
+    $user_tokens = cool_tokens_user_tokens_list_options($form['#user']);
+    if($ft_tokens) {
+      $form['cool_tokens'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('User\'s Cool Tokens'),
+        '#collapsible' => TRUE,
+        '#collapsed' => TRUE,
+        '#weight' => -5,
+      );
+      $form['cool_tokens']['ft_token'] = array(
+        '#type' => 'checkboxes',
+        '#title' => t('Cool Tokens'),
+        '#options' => $ft_tokens,
+        '#default_value' => $user_tokens,
+        '#weight' => '-3',
+        '#access' => user_access('administer cool tokens'),
+      );
+      $form['#submit'][] = 'cool_tokens_profile_edit_submit';
+    }
+  }
+}
+
+/**
+ * Submit handler adds tokens to a user profile.
+ */
+function cool_tokens_profile_edit_submit(&$form, &$form_state) {
+  $user = $form['#user'];
+  // If no user exists then return
+  if (!$user) {
+    return;
+  }
+  // Grab list of all tokens.
+  $tokens = cool_tokens_list();
+  // Grab list of tokens user previosly had.
+  $old_tokens = cool_tokens_user_tokens_list($user);
+  // Grab list of tokens selected.
+  $new_tokens = array_filter($form_state['values']['ft_token']);
+  foreach ($tokens as $tkid) {
+    // If match between new and old tokens continue.
+    if ((!isset($old_tokens[$tkid]) && (!isset($new_tokens[$tkid]))) || ((isset($old_tokens[$tkid])) && (isset($new_tokens[$tkid])))) {
+      continue;
+    }
+    // Load the token as we will need it from this point regardless.
+    $token = cool_tokens_token_load($tkid);
+    // If in new tokens but not in old tokens add.
+    if ((in_array($tkid, $new_tokens)) && (!in_array($tkid, $old_tokens))) {
+      $token->assignToken($user);
+    }
+    elseif ((in_array($tkid, $old_tokens)) && (!in_array($tkid, $new_tokens))) {
+      $token->unassignToken($user);
+    }
+  }
+}
+
+/**
+ * Implements hook_user_delete().
+ */
+function cool_tokens_user_delete($account) {
+  // Delete any token ownerships attached to the deleted user.
+  $query = db_delete('cool_tokens_owner');
+  $query->condition('uid', $account->uid)
+        ->execute();
+}
+
+
+
+// ********* THEMES *******
+/**
+ * Implements hook_theme().
+ */
+function cool_tokens_theme() {
+  $themes = array();
+  $themes['token_add_list'] = array(
+    'variables' => array(
+      'content' => array(),
+     ),
+  );
+  return $themes;
+}
+
+/**
+ * Helper function to set activate job on a token.
+ * @param Campaign $token
+ *   The token to use.
+ */
+function cool_tokens_add_activate_job($token) {
+  $job = array(
+    'id' => $token->tkid,
+    'type' => 'ft_token_activate',
+    'period' => $token->activeDate() - time(),
+    'periodic' => false,
+    'data' => array(
+      'token' => $token,
+    ),
+  );
+  $scheduler = JobScheduler::get('ft_token_activate');
+  if (!($scheduler->check($job))) {
+    $scheduler->set($job);
+  }
+}
+
+/**
+ * Helper function to remove activate job on a token.
+ * @param Campaign $token
+ *   The token to use.
+ */
+function cool_tokens_remove_activate_job($token) {
+  $job = array(
+    'id' => $token->tkid,
+    'type' => 'ft_token_activate',
+  );
+  $scheduler = JobScheduler::get('ft_token_activate');
+  $scheduler->remove($job);
+}
+
+/**
+ * Helper function to set expire job on a token.
+ * @param Campaign $token
+ *   The token to use.
+ */
+function cool_tokens_add_expire_job($token) {
+  $job = array(
+    'id' => $token->tkid,
+    'type' => 'ft_token_expire',
+    'period' => (($token->expireDate() - time()) < 0) ? NULL : $token->expireDate() - time(),
+    'periodic' => false,
+     'data' => array(
+        'token' => $token,
+      ),
+  );
+  $scheduler = JobScheduler::get('ft_token_expire');
+  if (!($scheduler->check($job))) {
+    $scheduler->set($job);
+  }
+}
+
+/**
+ * Helper function to remove expire job on a token.
+ * @param Campaign $token
+ *   The token to use.
+ */
+function cool_tokens_remove_expire_job($token) {
+  $job = array(
+    'id' => $token->tkid,
+    'type' => 'ft_token_expire',
+  );
+  $scheduler = JobScheduler::get('ft_token_expire');
+  $scheduler->remove($job);
+}
+
+/**
+ * Helper function to set jobs on a token.
+ * @param Campaign $token
+ *   The token to use.
+ */
+function cool_tokens_update_jobs($token) {
+  // Set activation and expiration jobs as appropriate.
+  if (!($token->isActive()) && ($token->activeDate() > time())) {
+    cool_tokens_add_activate_job($token);
+  }
+  else {
+    cool_tokens_remove_activate_job($token);
+  }
+  if ($token->expireDate() && $token->set_expire == 1){
+    cool_tokens_add_expire_job($token);
+  }
+  else {
+    cool_tokens_remove_expire_job($token);
+  }
+}
+
+/**
+ * Helper function removes jobs on a token.
+ * @param Campaign $token
+ *   The token to use.
+ */
+function cool_tokens_remove_jobs($token) {
+  if (!($token->isActive()) && ($token->activeDate() > time())) {
+    cool_tokens_remove_activate_job($token);
+  }
+  if ($token->expireDate() && $token->set_expire == 1){
+    cool_tokens_remove_expire_job($token);
+  }
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function cool_tokens_views_api($module = NULL, $api = NULL) {
+  return array("api" => "3.0");
+}

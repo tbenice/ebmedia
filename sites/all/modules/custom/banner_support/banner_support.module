@@ -1,0 +1,109 @@
+<?php
+/**
+ * @file
+ * Code for the Banner Support feature.
+ */
+
+/**
+ * Implements hook_ctools_plugin_api().
+ */
+function banner_support_ctools_plugin_api($module = NULL, $api = NULL) {
+  return common_support_ctools_plugin_api($module, $api);
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function banner_support_views_api($module = NULL, $api = NULL) {
+  return common_support_views_api($module, $api);
+}
+
+/**
+ * Implements hook_common_support_import().
+ */
+function banner_support_common_support_import() {
+  return array(
+    'node_type',
+    'field_base',
+    'field_instance',
+    'variable',
+  );
+}
+
+/**
+ * Implements hook_common_support_delete_import().
+ */
+function banner_support_common_support_delete_import() {
+  return array(
+    'node_type',
+    'field_instance',
+    'variable',
+  );
+}
+
+/**
+ * Implements hook_entity_view_mode_alter().
+ */
+function banner_support_entity_view_mode_alter(&$view_mode, $context) {
+  // Switch banner view modes on banner logic.
+  // This works b/c banners are only shown in a views block.
+  // If body has content, use teaser.
+  $node = $context['entity'];
+  if (($context['entity_type'] == 'node') && ($node->type == 'banner')) {
+    if (!empty($node->field_banner_body)) {
+      $view_mode = 'teaser2';
+    }
+    else {
+      $view_mode = 'teaser';
+    }
+  }
+}
+
+/**
+ * Implements hook_preprocess_node().
+ */
+function banner_support_preprocess_node(&$vars) {
+  // Proceed if this is a banner.
+  if ($vars['node']->type == 'banner') {
+    if (!empty($vars['field_banner_link']) && !empty($vars['field_banner_image'])) {
+      $image = (isset($vars['field_banner_image'][LANGUAGE_NONE][0])) ? $vars['field_banner_image'][LANGUAGE_NONE][0] : $vars['field_banner_image'][0];
+      $image_array = field_view_value('node', $vars['node'], 'field_banner_image', $image);
+      $url = (isset($vars['field_banner_link'][LANGUAGE_NONE][0]['url'])) ? $vars['field_banner_link'][LANGUAGE_NONE][0]['url'] : $vars['field_banner_link'][0]['url'];
+      $field_content = array(
+        '#theme' => 'link',
+        '#path' => $url,
+        '#text' => drupal_render($image_array),
+        '#options' => array(
+          'html' => TRUE,
+          'attributes' => array(
+            'class' => array('banner-image-link image reactive'),
+          ),
+        ),
+      );
+      $vars['linked_image'] = drupal_render($field_content);
+    }
+  }
+}
+
+/**
+ * Implements hook_ds_layout_info().
+ */
+function banner_support_ds_layout_info() {
+  $path = drupal_get_path('module', 'banner_support');
+
+  $layouts = array(
+    'banner_with_body1' => array(
+      'label' => t('Banner With Body V1'),
+      'path' => $path . '/layouts/banner_with_body1',
+      'regions' => array(
+        'row1' => t('Row 1'),
+        'row2' => t('Row 2'),
+      ),
+      'css' => TRUE,
+      // optional, form only applies to node form at this point.
+      'form' => TRUE,
+    ),
+  );
+
+  return $layouts;
+}

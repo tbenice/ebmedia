@@ -1,0 +1,13 @@
+
+
+Required/recommended fields from an auth+capture "purchase" transaction
+- First Data user name
+- Gateway ID
+- Gateway password
+- Transaction type code
+- Credit card number
+- Credit card expiration (4 digits MMYY)
+- Credit card cardholder's name
+- Transaction dollar amount
+- ZIP code is used for verfication
+- Language, defaults to "en"

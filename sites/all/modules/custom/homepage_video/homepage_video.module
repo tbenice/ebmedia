@@ -1,0 +1,16 @@
+<?php
+/**
+ * @file franti_home_video.module
+ */
+
+/**
+ * Implements hook_preprocess_page().
+ */
+function homepage_video_preprocess_page($vars) {
+  // Include the necessary libraries only on the front page.
+  if ($vars['is_front']) {
+    drupal_add_js(drupal_get_path('module', 'homepage_video') . '/js/maxImage/lib/js/jquery.maximage.min.js');
+    drupal_add_js(drupal_get_path('module', 'homepage_video') . '/js/homepage_video.js');
+    drupal_add_css(drupal_get_path('module', 'homepage_video') . '/css/homepage_video.css');
+  }
+}

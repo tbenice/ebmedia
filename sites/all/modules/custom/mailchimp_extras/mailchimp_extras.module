@@ -1,0 +1,471 @@
+<?php
+/**
+ * @file
+ * Code for the ID-Mailing List:Mailchimp feature.
+ */
+
+
+/**
+ * implements hook_menu
+ */
+function mailchimp_extras_menu() {
+  $items['admin/config/services/mailchimp/mailinglist'] = array(
+    'type' => MENU_LOCAL_TASK,
+    'title' => t('ID - Mailing List Settings'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('mailchimp_extras_settings'),
+    'access callback' => 'user_access',
+    'access arguments' => array('administer mailchimp'),
+    'file' => 'includes/mailchimp_extras.admin.inc',
+  );
+  $items['admin/config/services/mailchimp/groups'] = array(
+    'type' => MENU_LOCAL_TASK,
+    'title' => t('ID - Mailing List Groups'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('mailchimp_extras_group_settings_form'),
+    'access callback' => 'user_access',
+    'access arguments' => array('administer mailchimp'),
+    'file' => 'includes/mailchimp_extras.admin.inc',
+  );
+  $items['admin/config/services/mailchimp/delete-mc-group'] = array( 
+    'title' => 'Delete MailChimp Group',  // Required
+    'page callback' => 'mailchimp_extras_delete_group',
+    'access arguments' => array('administer mailchimp'),
+    'type' => MENU_CALLBACK,
+    'file' => 'includes/mailchimp_extras.admin.inc',
+ ); 
+  return $items;
+}
+
+/**
+ * Merges profile2 tokens.
+ * @return array
+ *   List of profile2 tokens.
+ */
+function mailchimp_extras_mailchimp_lists_merge_tokens() {
+  $tokens = array();
+  // grab profile tokens
+  $token_info = token_info();
+  if (!empty($token_info['tokens']['profile2'])) {
+		$tokens = $token_info['tokens']['profile2'];
+		unset($tokens['url']);
+  }
+	return $tokens;
+}
+
+/**
+ * Implements hook_mailchimp_subscribe_user().
+ */
+function mailchimp_extras_mailchimp_subscribe_user($list, $email, $merge_vars, $message = TRUE, $mcapi = NULL) {
+  $success = FALSE;
+  if ($mcapi || $mcapi = mailchimp_get_api_object()) {
+    $double_optin = $list->settings['doublein'];
+    $success = $mcapi->listSubscribe($list->mc_list_id, $email, $merge_vars, 'html', $double_optin, TRUE, FALSE);
+    if ($message && $success && $double_optin) {
+      drupal_set_message(t('You have chosen to subscribe to %list. An email will be sent to your address. Click the link in the email to confirm the subscription.',
+        array('%list' => $list->label)));
+    }
+    elseif ($message && $success) {
+      drupal_set_message(t('You have subscribed to %list.', array('%list' => $list->label)));
+    }
+    // clear user cache, just in case there's some cruft leftover
+    mailchimp_cache_clear_user($list->mc_list_id, $email);
+    if ($success) {
+      //module_invoke_all('mailchimp_subscribe_user', $list, $email, $merge_vars);
+      watchdog('mailchimp', '@email was subscribed to list @list @groups.',
+        array('@email' => $merge_vars['EMAIL'], '@list' => $list->label, '@groups' => $merge_vars['GROUPINGS']), WATCHDOG_NOTICE
+      );
+    }
+    else {
+      watchdog('mailchimp', 'A problem occurred subscribing @email to list @list. Message: @msg', array(
+        '@email' => $merge_vars['EMAIL'],
+        '@list' => $list->label,
+        '@msg' => $mcapi->errorMessage,
+      ), WATCHDOG_WARNING);
+    }
+  }
+
+  return $success;
+}
+
+/**
+ * Helper function subscribes a user account to the main site mailing list, and applies
+ * the specified group.
+ * NOTE: subscription will fail if the group passed to $group is invalid
+ * The user $account is only subscribed if not already subscribed.
+ * 
+ * @param StdClass $account
+ * @param string $mc_group
+ */
+function _mailchimp_extras_user_subscribe($account, $mc_group, $email, $message = false, $vars = array()) {
+  //if there is no default group, the Registered group is used.
+  if(!($mc_group == NULL)) {
+  $mc_group = $mc_group;
+  } else {
+    $mc_group = 'Registered';
+  }
+  $list = mailchimp_lists_load(variable_get('mailchimp_extras_main_list', ''));
+  //Here we get the list of groups, and check to see if one matches $mc_group. If so, we get that grouping's name for use in listSubscribe.
+  $mc_list = mailchimp_extras_groups();
+  foreach($mc_list as $mc_list){
+    if($mc_list['group_name'] == $mc_group) {
+      $mc_grouping = $mc_list['grouping'];
+    }
+    else { $mc_grouping = 'Default'; }
+  }
+  //grab relevant mergevars for user
+  $mergevars = mailchimp_lists_load_user_mergevars($account, $list);
+   //set group
+  $mergevars['GROUPINGS'] = array(array('name' => $mc_grouping, 'groups' => $mc_group));
+  $mergevars['EMAIL'] = $email;
+  //merge in passed mergevars
+  if(is_array($vars)) {
+    $merge_vars = array_merge($mergevars, $vars);
+  } else {
+    $merge_vars = array_merge($mergevars);
+  }
+  //subscribe the user
+  mailchimp_extras_mailchimp_subscribe_user($list, $email, $merge_vars, $message);
+}
+
+/**
+ * Helper function unsubscribes a user account from the main site mailing list and
+ * the specified group.
+ *
+ * @param StdClass $account
+ * @param string $mc_group
+ */
+function _mailchimp_extras_user_unsubscribe($account, $mc_group, $email, $message = false, $vars = array()) {
+
+  $mcapi = mailchimp_get_api_object();
+  //$list = _mailchimp_extras_load_list();
+  $list = mailchimp_lists_load(variable_get('mailchimp_extras_main_list', ''));
+  $lid = $list->mc_list_id;
+  //check to make sure user is subscribed to main list
+  $is_subscribed = mailchimp_is_subscribed($lid, $email);
+  
+  if ($is_subscribed) {
+    //unsubscribe the user
+    mailchimp_unsubscribe_user($list, $email, $message); 
+  } 
+}
+
+/**
+ * implements hook_user_update
+ * calls helper to add the user's account to the mailing list if appropriate
+ * 
+ * @param array $edit
+ * @param StdClass $account
+ * @param string $category
+ */
+function mailchimp_extras_user_update(&$edit, $account, $category) {
+  if (!($edit['is_new'])) {
+    _mailchimp_extras_user_sync($account);
+  }
+}
+
+/**
+ * 
+ * implements hook_profile2_update to update profile fields in mailchimp
+ * as they change, since they are used as merged fields
+ * @param unknown_type $profile
+ */
+function mailchimp_extras_profile2_update($profile) {
+  _mailchimp_extras_profile2_sync($profile);
+}
+
+/**
+ * implements hook_block_info
+ */
+function mailchimp_extras_block_info() {
+  $blocks = array(
+    'mailing_list_mc_subscribe_form' => array(
+      'info' => t('ID - Mailing List Subscribe Form'),
+      'cache' => DRUPAL_NO_CACHE,
+    ),
+    'mailing_list_mc_subscribe_link' => array(
+      'info' => t('ID - Mailing List Subscribe Link'),
+      'cache' => DRUPAL_NO_CACHE,
+    ),
+    'mailing_list_mc_group_display' => array(
+      'info' => t('ID - Mailing List Group Info'),
+      'cache' => DRUPAL_NO_CACHE,
+    ),
+  );
+  return $blocks;
+}
+
+/**
+ * implements hook_block_view
+ * @param string $delta
+ */
+function mailchimp_extras_block_view($delta = '') {
+  switch ($delta) {
+    case 'mailing_list_mc_subscribe_form':
+      //don't show the subscribe form if the user is already subscribed
+      $block['subject'] = t('Newsletter');
+      $block['content'] = drupal_get_form('mailchimp_extras_subscribe_form');
+      return $block;
+      break;
+    case 'mailing_list_mc_subscribe_link':
+      //don't show the subscribe form if the user is already subscribed
+      if (!(_mailchimp_extras_is_subscribed())) {
+        $block['content'] = theme('mailing_list_mc_subscribe_link');
+        return $block;
+      }
+      break;
+    case 'mailing_list_mc_group_display':
+    $block['content'] = theme('mailing_list_mc_group_display');
+    return $block;
+    break;
+  }
+}
+
+/**
+ * defines the subscription form for the main mailing list
+ * @param array $form_state
+ */
+function mailchimp_extras_subscribe_form($form_state) {
+  $form['mail'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Email'),
+    '#size' => 40,
+    '#attributes' => array(
+      'placeholder' => 'email address'
+    ),
+  );
+  $form['zipcode'] =array(
+    '#type' => 'textfield',
+    '#title' => 'Zipcode',
+    '#size' => 40,
+    '#description' => t('Let us send you info about events in your area'),
+    '#attributes' => array(
+      'placeholder' => 'zipcode',
+    ),
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Subscribe'),
+  );
+  return $form;
+}
+
+/**
+ * form validation for the main mailing list subscription form
+ * checks if the user has entered a 'valid' email addy
+ * @param array $form
+ * @param array $form_state
+ */
+function mailchimp_extras_subscribe_form_validate($form, $form_state) {
+  if (!valid_email_address(trim($form_state['values']['mail']))) {
+      $message = t('"%mail" is not a valid email address', array('%mail' => $form_state['mail']));
+      form_set_error('mail', $message);
+  }
+}  
+
+/**
+ * submit handler for the main mailing list subscription form
+ * @param array $form
+ * @param array $form_state
+ */
+function mailchimp_extras_subscribe_form_submit($form, $form_state) {
+  $account = new StdClass();
+  $account->mail = $form_state['values']['mail'];
+  $mergevals['MMERGE5'] = $form_state['values']['zipcode'];
+  _mailchimp_extras_user_subscribe($account, 'Subscribed', true, $mergevals);
+}
+
+/*
+ * function to output group array
+ */
+
+function mailchimp_extras_groups($mcapi = NULL) {
+  $mcapi = mailchimp_get_api_object();
+  $mlid = variable_get('mailchimp_extras_main_list', '');
+  $list = mailchimp_lists_load($mlid);
+  //the variables above this line are correct.  API call needs to be fixed.
+  $mc_list = $mcapi->listInterestGroupings($list->mc_list_id);
+  $intgroups = array();
+  foreach($mc_list as $list) {
+    foreach($list['groups'] as $intgroup) { 
+      $intgroups[] = array(
+			 'grouping' => $list['name'],
+			 'group_id' => $list['id'],
+			 'group_name' => $intgroup['name'],
+			 'subscribers' =>$intgroup['subscribers'],
+			 );
+    }
+  }
+
+  return $intgroups; 
+}
+
+/**
+ * Returns group names for a mailing list.
+ * @return array
+ *   List of groups.
+ */
+function mailchimp_extras_group_names() {
+    $groups = mailchimp_extras_groups();
+    $group_names = array();
+    foreach($groups as $key => $group){
+        if (in_array($group['grouping'], $groups) ) {
+            continue;
+        }
+        $groups[] = $group['grouping'];
+        $group_names[$group['group_id']] = $group['grouping'];
+    }
+    return $group_names;
+}
+
+/*
+ * implements hook_options_list()
+ */
+function mailchimp_extras_options_list($mcapi = NULL) {
+  $mcapi = mailchimp_get_api_object();
+  $api = variable_get('mailchimp_api_key', '');
+  $mlid = variable_get('mailchimp_extras_main_list', '');
+  $list = mailchimp_lists_load($mlid);
+  $list_id = $list->mc_list_id;
+  //the variables above this line are correct.  API call needs to be fixed.
+  $mc_list = $mcapi->listInterestGroupings($list->mc_list_id); //dsm($mc_list, 'lists');
+  //dsm($mc_list[0]['groups']);
+  $intgroups = array();
+  
+  foreach($mc_list as $list) {
+    foreach($list['groups'] as $intgroup) {
+      $intgroups[$intgroup['name']] = $intgroup['name'];
+    }
+  }
+
+  return $intgroups; 
+}
+
+/**
+ * implements hook_theme
+ */
+function mailchimp_extras_theme() {
+  return array (
+    'mailing_list_mc_subscribe_link' => array (
+      'variables' => array(),
+      'file' => 'theme/mailchimp_extras.theme.inc',
+    ),
+    'mailing_list_mc_group_display' => array (
+      'variables' => array(),
+      'template' => 'mc-group-display',
+      'preprocess functions' => array(
+       'template_preprocess_mailing_list_mc_group_display'
+       ),
+      'file' => 'theme/mailchimp_extras.theme.inc',
+    ),
+  );
+}
+
+/**
+ * Add or update a user when user is updated
+ *
+ * @param string $account
+ * @param string $new_email
+ */
+function _mailchimp_extras_user_sync($account) {
+  $list = _mailchimp_extras_load_list();
+  if (is_object($list)) {
+    $mcapi = mailchimp_get_api_object();
+    mailchimp_cache_clear_user($list->mc_list_id, $account->mail);
+    $is_subscribed = mailchimp_is_subscribed($list->mc_list_id, $account->mail);
+    $mergevals['EMAIL'] = $account->mail;
+    //if subscribed then update the user...
+    if ($is_subscribed && (!isset($account->profile_main))) {
+      mailchimp_update_user($list, $account->mail, $mergevals, false, $mcapi);
+    }
+  }
+}
+
+/**
+ * Add a user's subscription to site's main mailinglist to the cron queue
+ *
+ * @param string $account
+ * @param string $new_email
+ */
+function _mailchimp_extras_profile2_sync($profile) {
+  if (is_object($profile)) {
+    if ($list = _mailchimp_extras_load_list()) {
+      $mcapi = mailchimp_get_api_object();
+      $account = user_load($profile->uid);
+      //populate mergeval
+      $mergevals = array(
+        'FNAME' => (isset($profile->field_text_2[LANGUAGE_NONE][0]['value'])) ? $profile->field_text_2[LANGUAGE_NONE][0]['value'] : $account->name,
+        'LNAME' => (isset($profile->field_text_3[LANGUAGE_NONE][0]['value'])) ? $profile->field_text_3[LANGUAGE_NONE][0]['value'] : '',
+        'MMERGE5' => (isset($profile->field_text_1[LANGUAGE_NONE][0]['value'])) ? $profile->field_text_1[LANGUAGE_NONE][0]['value'] : '',
+        'EMAIL' => ($account->mail),
+      );
+      mailchimp_cache_clear_user($list->mc_list_id, $account->mail);
+      $is_subscribed = mailchimp_is_subscribed($list->mc_list_id, $account->mail);
+      //if subscribed then update the user
+      if ($is_subscribed) {
+        mailchimp_update_user($list, $account->mail, $mergevals, false, $mcapi);
+      }
+    }
+  }
+}
+
+/**
+ * helper function to return the site's main mailing list
+ * 
+ * @param boolean $full
+ *   sets whether to return the full list object or the just the
+ *   entity (default)
+ * @return obj
+ * 	 returns either the main mailing list object or FALSE on
+ *   failure.
+ */
+function _mailchimp_extras_load_list($full = false) {
+  $lid = variable_get('mailchimp_extras_main_list', '');
+  $list = mailchimp_lists_load($lid);
+  if (is_object($list)) {
+  $list = ($full) ? mailchimp_get_list(mailchimp_lists_load($lid)->mc_list_id) : mailchimp_lists_load($lid);
+  }
+  else {
+    $list = FALSE;
+  }
+  return $list;
+}
+
+/**
+ * helper function to determine if a user is already subscribed to the 
+ * site's main mailing list
+ */
+function _mailchimp_extras_is_subscribed() {
+  //assume that all registered users are already subscribed
+  if (user_is_logged_in()) {
+    return true;
+  }
+  //check if the user has a commerce order
+  return false;
+}
+
+/**
+ * Implements hook_mailchimp_lists_merge_values().
+ * @param array $mergevars
+ * @param object $account
+ * @return array
+ */
+function mailchimp_extras_mailchimp_lists_merge_values($mergevars, $account, $list) {
+  return token_generate('user', $mergevars, array('user' => $account));
+}
+
+/**
+ * Implements hook_ctools_plugin_api().
+ */
+function mailchimp_extras_support_ctools_plugin_api($module = NULL, $api = NULL) {
+  if ($module == "context" && $api == "context") {
+    return array("version" => "3");
+  }
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function mailchimp_extras_views_api($module = NULL, $api = NULL) {
+  return array("api" => "3.0");
+}

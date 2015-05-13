@@ -1,0 +1,363 @@
+<?php
+/**
+ * @file
+ * campaign_api.install
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function campaign_api_schema() {
+  $schema = array();
+  $schema['campaign'] = array(
+    'description' => 'Stores  Campaigns information.',
+    'fields' => array(
+      'campaign_id' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique campaign ID.',
+      ),
+      'title' => array(
+        'description' => 'The title for the campaign.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',      
+      ),
+      'description' => array(
+        'description' => 'A short description for this campaign.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+     'active' => array(
+        'description' => "Defines if the campaign is active or not.",
+      	'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+     'type' => array(
+        'description' => 'The type of bundle.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'default' => NULL,
+      ),
+     'activates' => array(
+        'description' => 'The date and time when the group starts being active.',
+        'type' => 'blob',
+        'serialize' => TRUE,
+        'not null' => FALSE,
+      ),
+     'set_expire' => array(
+        'description' => "Defines if the token expires or not.",
+	// Default is set to never expire.
+      	'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+     'expires' => array(
+        'description' => 'The date and time when the token expires.',
+        'type' => 'blob',
+        'serialize' => TRUE,
+        'not null' => FALSE,
+      ),
+      'data' => array(
+        'description' => 'Additional data attached to a token',
+        'type' => 'blob',
+        'serialize' => TRUE,
+        'not null' => FALSE,
+      ),
+      'weight' => array(
+      	'type' => 'int',
+        'unsigned' => FALSE,
+        'size' => 'normal',
+        'not null' => FALSE,
+        'default' => 0,
+        'description' => "The weight of the group for ordering in lists.",
+      ),
+      'status' => array(
+        'type' => 'int', 
+        'not null' => TRUE,
+        // Set the default to ENTITY_CUSTOM without using the constant as it is
+        // not safe to use it at this point. 
+        'default' => 0x01, 
+        'size' => 'tiny', 
+        'description' => 'The exportable status of the entity.',
+      ), 
+      'module' => array(
+        'description' => 'The name of the providing module if the entity has been defined in code.', 
+        'type' => 'varchar', 
+        'length' => 255, 
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('campaign_id'),
+    'forign keys' => array(
+      'campaign_type' => array(
+        'table' => 'campaign_type',
+        'columns' => array('type' => 'type'),
+      ),
+    ),
+  );
+
+  $schema['campaign_type'] = array(
+    'description' => 'Stores  Campaign Entity Bundle Info.',
+    'fields' => array(
+     'type' => array(
+        'description' => 'The type of bundle.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'default' => NULL,
+      ),
+     'label' => array(
+        'description' => 'The label for ui purposes.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'default' => NULL,
+      ),
+     'description' => array(
+        'description' => 'A short description for this campaign type.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'status' => array(
+        'type' => 'int', 
+        'not null' => TRUE,
+        // Set the default to ENTITY_CUSTOM without using the constant as it is
+        // not safe to use it at this point. 
+        'default' => 0x01, 
+        'size' => 'tiny', 
+        'description' => 'The exportable status of the entity.',
+      ), 
+      'module' => array(
+        'description' => 'The name of the providing module if the entity has been defined in code.', 
+        'type' => 'varchar', 
+        'length' => 255, 
+        'not null' => FALSE,
+      ),
+     'class' => array(
+        'description ' => "The campaign plug-in class",
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => 'CampaignDefault',
+      ),
+      'data' => array(
+        'description' => 'Additional data attached to a campaign type',
+        'type' => 'blob',
+        'serialize' => TRUE,
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('type'),
+  );
+
+  $schema['cool_keys_key_groups'] = array(
+    'description' => 'Stores  CoolKeys group information.',
+    'fields' => array(
+      'kgid' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique profile item machine_name.',
+      ),
+      'title' => array(
+        'description' => 'The title for the group.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'description' => array(
+        'description' => 'A short description for this group.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'set_unlimited_keys' => array(
+        'description' => "Defines if the group has a max number of keys or not.",
+        // Default is set to limited.
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'num_keys' => array(
+        'description' => 'The number of keys in this group.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 1,
+      ),
+      'max_uses' => array(
+        'description' => 'The number of times a key from this group may be used.',
+        'type' => 'int',
+        'not null' => FALSE,
+        'default' => NULL,
+      ),
+      'set_unlimited_uses' => array(
+        'description' => "Defines if the group has a max number of uses or not.",
+        // Default is set to limited.
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'uid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'size' => 'normal',
+        'not null' => TRUE,
+        'default' => 1,
+        'description' => "The {users}.uid of the associated user.",
+      ),
+      'active' => array(
+        'description' => "Defines if the group is active or not.",
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'activates' => array(
+        'description' => 'The date and time when the group starts being active.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'default' => NULL,
+      ),
+      'set_expire' => array(
+        'description' => "Defines if the group expires or not.",
+        // Default is set to never expire.
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'expires' => array(
+        'description' => 'The date and time when the group expires.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'default' => NULL,
+      ),
+      'data' => array(
+        'description' => "arbitrary data attached to the key group",
+        'type' => 'blob',
+        'not null' => FALSE,
+        'serialize' => TRUE,
+      ),
+      'weight' => array(
+        'type' => 'int',
+        'unsigned' => FALSE,
+        'size' => 'normal',
+        'not null' => FALSE,
+        'default' => 0,
+        'description' => "The weight of the group for ordering in lists.",
+      ),
+      'status' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        // Set the default to ENTITY_CUSTOM without using the constant as it is
+        // not safe to use it at this point.
+        'default' => 0x01,
+        'size' => 'tiny',
+        'description' => 'The exportable status of the entity.',
+      ),
+      'module' => array(
+        'description' => 'The name of the providing module if the entity has been defined in code.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('kgid'),
+  );
+
+  $schema['cool_keys_key_codes'] = array(
+    'description' => 'Stores  Cool Keys.',
+    'fields' => array(
+      'kcid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+        'description' => 'Primary Key: Unique key code ID.',
+      ),
+      'kgid' => array(
+        'description' => 'The key group for this key code.',
+        'type' => 'varchar',
+        'not null' => TRUE,
+        'length' => 255,
+      ),
+      'key_code' => array(
+        'description' => 'The unique key code.',
+        'type' => 'varchar',
+        'not null' => TRUE,
+        'length' => 100,
+      ),
+      'max_uses' => array(
+        'description' => 'The total number of times this key code may be used.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 1,
+      ),
+      'num_used' => array(
+        'description' => 'The number of times this code has been used.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'issued' => array(
+        'description' => "Defines if the key has been issued.",
+        // Default is set to not issued.
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'data' => array(
+        'description' => "arbitrary data attached to the key code",
+        'type' => 'blob',
+        'not null' => FALSE,
+        'serialize' => TRUE,
+      ),
+    ),
+    'foreign keys' => array(
+      'kgid' => array(
+        'table' => 'cool_keys_key_groups',
+        'columns' => array('key_code' => 'kgid'),
+      ),
+    ),
+    'primary key' => array('kcid'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Change date fields to blob.
+ */
+function campaign_api_update_7100() {
+  $spec = array(
+    'description' => 'The date and time when the group starts being active.',
+    'type' => 'blob',
+    'serialize' => TRUE,
+    'not null' => FALSE,
+  );
+  db_change_field('campaign', 'activates', 'activates', $spec);
+  $spec = array(
+    'description' => 'The date and time when the group starts being active.',
+    'type' => 'blob',
+    'serialize' => TRUE,
+    'not null' => FALSE,
+  );
+  db_change_field('campaign', 'expires', 'expires', $spec);
+}

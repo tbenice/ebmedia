@@ -1,0 +1,17 @@
+@CHARSET "UTF-8";
+
+.contextual-message-target-wrapper, .contextual-message-target {
+	position:relative;
+}
+
+.contextual-message-container {
+	position:absolute;
+	top:0px;
+	background:white;
+	padding: 5px;
+	border:2px solid black;
+}
+
+.contextual-message-hide {
+	display:none;
+}

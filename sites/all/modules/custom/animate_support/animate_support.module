@@ -1,0 +1,12 @@
+<?php
+/*
+ * @file animate_support.module
+ */
+
+/**
+ * Implements hook_init().
+ */
+function animate_support_init() {
+  $script = 'new WOW().init();';
+  drupal_add_js($script, array('type' => 'inline', 'scope' => 'header', 'weight' => 100));
+}

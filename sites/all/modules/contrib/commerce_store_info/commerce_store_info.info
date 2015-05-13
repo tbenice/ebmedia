@@ -1,0 +1,10 @@
+core = "7.x"
+dependencies[] = rules
+dependencies[] = commerce
+dependencies[] = token
+description = "Adds store information and sitewide tokens for inclusion in emails, etc."
+files[] = "commerce_store_info.module"
+files[] = "commerce_store_info.tokens.inc"
+name = "Commerce Store Info"
+package = "Commerce (contrib)"
+php = "5.2.4"

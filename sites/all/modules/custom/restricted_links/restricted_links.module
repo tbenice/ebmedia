@@ -1,0 +1,212 @@
+<?php
+
+/**
+ * Implements hook_field_info_alter().
+ */
+function restricted_links_field_info_alter(&$info) {
+  // Add a setting to all link_field types.
+  $info['link_field']['settings']['attributes'] += array(
+    'rid' => '',
+    'active_date' => '',
+    'expires' => 0,
+    'expire_date' => '',
+  );
+  $info['link_field']['instance_settings']['attributes'] += array(
+    'rid' => '',
+    'active_date' => '',
+    'expires' => 0,
+    'expire_date' => '',
+  );
+}
+
+/**
+ * @param $item
+ *   The restricted link item to check.
+ * @param null $user
+ *   The user to check access for.
+ * @return bool
+ *   Returns TRUE if user has access to item.
+ */
+function _restricted_links_check($item, $user = NULL){
+  // Some restricted links throw warnings if
+  // the nodes utilizing them are not saved after
+  // being made to implement restricted links.
+  if (empty($item['attributes'])) {
+    return TRUE;
+  }
+  if(!isset($user)){
+    global $user;
+  }
+  $roles = $user->roles;
+  // Sometimes no attribute is provided.
+  // If not then we'll use the defaults.
+  $attributes = $item['attributes']['restrictions'];
+  $today = time();
+  $active_date = (isset($attributes['active_date'])) ? $attributes['active_date']: date('c', $today - 100);
+  $expire_date = (isset($attributes['expire_date'])) ? $attributes['expire_date'] : date('c', $today + 100);
+  $active_string = strtotime("$active_date");
+  $expire_string = strtotime("$expire_date");
+  $expires = (isset($attributes['expires'])) ? $attributes['expires'] : 0;
+  $rid = (isset($attributes['rid'])) ? array_flip($attributes['rid']) : array(1 => 0, 2 => 1);
+  $rid_key = array_intersect_key($rid, $roles);
+  if(!empty($rid)) {
+    if(empty($rid_key)) {
+     return FALSE;
+    }
+  }
+  if($active_string > $today) {
+    return FALSE;
+  }
+  if($expires == 1){
+    if($today > $expire_string) {
+      return FALSE;
+    }
+  }
+  return TRUE;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function restricted_links_theme() {
+  return array(
+    'link_formatter_restricted_link_default' => array(
+      'variables' => array('element' => NULL),
+      'file' => 'theme/restricted_links.theme.inc',
+    ),
+    'restricted_widget' => array(
+      'render element' => 'element',
+      'file' => 'theme/restricted_links.theme.inc',
+    ),
+  );
+}
+
+/**
+ * Implements hook_element_info_alter().
+ */
+
+function restricted_links_element_info_alter(&$type) {
+    // Decrease the default size of textfields.
+  if (isset($type['link_field']['#theme'])) {
+    $type['link_field']['#theme'] = 'restricted_widget';
+  }
+}
+
+/**
+ * Implements hook_field_widget_WIDGET_TYPE_form_alter().
+ */
+function restricted_links_field_widget_link_field_form_alter(&$element, &$form_state, $context){
+  if($context['form']['type']['#value'] == 'event'){
+    $field = $context['field'];
+    $instance = field_widget_instance($element, $form_state);
+    $settings = $instance['settings'];
+    $items = $context['items'];
+    $delta = $context['delta'];
+    $roles = user_roles();
+    $entity = $element['#entity'];
+    $format = 'M/j/Y g:i a';
+
+    if(!empty($items)){
+      foreach($items[$delta] as $item){
+				if(is_array($item)) {
+					$rid = $item['restrictions']['rid'];
+					$active_date = $item['restrictions']['active_date'];
+					$expires = $item['restrictions']['expires'];
+					$expire_date = $item['restrictions']['expire_date'];
+				}
+      }
+    }
+
+    $element['attributes']['restrictions'] = array(
+      '#type' => 'fieldset',
+      '#title' => 'Restricted Link Settings',
+      '#collapsible' => TRUE,
+      '#collapsed' => TRUE
+    );
+    $element['attributes']['restrictions']['rid'] = array(
+        '#type' => 'select',
+        '#options' => $roles,
+        '#multiple' => TRUE,
+        '#title' => 'Role',
+        '#description' => 'The roles that can view this link.',
+        '#default_value' => isset($rid) ? $rid : array(1,2),
+    );
+    $element['attributes']['restrictions']['active_date'] = array(
+        '#type' => 'date_select',
+        '#date_format' => $format,
+        '#date_increment' => 15,
+        '#title' => 'Active Date',
+        '#description' => 'The date this link becomes active.',
+        '#default_value' => isset($active_date) ? $active_date : '',
+    );
+    $element['attributes']['restrictions']['expires'] = array(
+        '#title' => t('Link Expires?'),
+        '#description' => t('If checked, then you may select a date for this link to expire.'),
+        '#type' => 'checkbox',
+        '#default_value' => isset($expires) ? $expires : FALSE,
+        '#attributes' => array(
+          'class' => array('restricted-links-expires-checkbox'),
+        )
+    );
+    // Calculate the expires checkbox input name.
+    $element_name = "{$element['#field_name']}[{$element['#language']}][{$element['#delta']}]" . '[attributes][restrictions][expires]';
+    $element['attributes']['restrictions']['expire_date'] = array(
+        '#type' => 'date_select',
+        '#date_format' => $format,
+        '#date_increment' => 15,
+        '#title' => 'Expire Date',
+        '#description' => 'The date this link expires.',
+        '#states' => array(
+            'invisible' => array(
+                ':input[name="' . $element_name . '"]' => array('checked' => FALSE),
+                ),
+            ),
+        '#default_value' => isset($expire_date) ? $expire_date : '',
+    );
+  }
+}
+
+/**
+ * Implements hook_field_attach_update().
+ */
+function restricted_links_node_update($node) {
+  field_attach_update('node', $node);
+}
+
+/*
+ ** Implements hook_field_formatter_info().
+ */
+function restricted_links_field_formatter_info(){
+  return array('restricted_link_default' => array(
+    'label' => t('Title, as restricted link'),
+    'field types' => array('link_field'),
+    'multiple values' => FIELD_BEHAVIOR_DEFAULT,
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_formatter_view().
+ */
+function restricted_links_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+  switch($display['type']) {
+    case 'restricted_link_default' :
+      $elements = array();
+      foreach ($items as $delta => $item) {
+        $access = _restricted_links_check($item);
+        if(isset($access)){
+          $content = theme('link_formatter_'. $display['type'], array('element' => $item, 'field' => $instance));
+          if (isset($display['views_view'])) {
+            $elements[$delta]= ($access) ? array('#markup' => $content) : null;
+          }
+          else {
+            $elements[$delta] = array(
+            '#markup' => $content,
+            '#access' => $access,
+          );
+          }
+        }
+      }
+      return $elements;
+  }
+}

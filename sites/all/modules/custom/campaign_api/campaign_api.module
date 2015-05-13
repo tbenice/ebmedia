@@ -1,0 +1,1634 @@
+<?php
+/**
+ * @file
+ * campaign_api.module
+ */
+
+ /**
+ * Implements hook_permission().
+ */
+function campaign_api_permission() {
+  $permissions = array();
+  $permissions['administer  campaigns'] = array(
+    'title' => t('Administer  Campaigns'),
+    'description' => t('Access ongoing campaign settings'),
+    'restrict access' => TRUE,
+    'warning' => t('Give only to roles that need access to campaign backend.')
+  );
+
+  $permissions['administer coolkeys'] = array(
+    'title' => t('Administer coolkeys'),
+    'description' => t('Access to  CoolKeys Admin Functions'),
+  );
+
+  return $permissions;
+}
+
+/**
+ * Implements hook_menu().
+ */
+function campaign_api_menu() {
+  $items = array();
+  $items['-campaigns/%campaign'] = array(
+    'type' => MENU_CALLBACK,
+    'title' => ' - Campaigns',
+    'title callback' => 'campaign_api_campaign_page_title',
+    'title arguments' => array(1),
+    'page callback' => 'campaign_api_campaign_page',
+    'page arguments' => array(1),
+    'access callback' => 'entity_access',
+    'access arguments' => array('edit', 'campaign', 1),
+    'file' => 'includes/campaign_api.pages.inc',
+  );
+
+  $items['admin/config/system/ga-experiments'] = array(
+    'type' => MENU_NORMAL_ITEM,
+    'title' => t('GA Content Experiments'),
+    'description' => t('Associate Google analytics content experiments with any drupal path on your site.'),
+    'access arguments' => array('administer google analytics'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('campaign_api_experiments_admin_form'),
+    'file' => 'includes/campaign_api.admin.inc',
+  );
+
+  $items['admin/config/system/ga-events'] = array(
+    'title' => t('Google Analytics Events'),
+    'description' => t('Configure event tracking for Google Analytics'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('campaign_api_ga_events_ui_admin_form'),
+    'access arguments' => array('administer google analytics'),
+    'file' => 'includes/campaign_api.admin.inc',
+  );
+
+  $ck_group_uri = 'admin/structure/cool-keys-groups';
+  $ck_group_uri_argument_position = 3;
+
+  $items[$ck_group_uri . '/%cool_keys_key_group'] = array(
+    'title callback' => 'entity_label',
+    'title arguments' => array('cool_keys_key_group', $ck_group_uri_argument_position),
+    'page callback' => 'entity_ui_get_form',
+    'page arguments' => array('cool_keys_key_group', $ck_group_uri_argument_position),
+    'access callback' => 'entity_access',
+    'access arguments' => array('edit', 'cool_keys_key_group', $ck_group_uri_argument_position),
+    'file' => 'includes/campaign_api.admin.inc',
+  );
+  $items[$ck_group_uri . '/%cool_keys_key_group/delete'] = array(
+    'title' => t('Delete'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('cool_keys_key_group_delete_form', $ck_group_uri_argument_position),
+    'access callback' => 'entity_access',
+    'access arguments' => array('delete', 'cool_keys_key_group', $ck_group_uri_argument_position),
+    'file' => 'includes/campaign_api.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_PAGE | MENU_CONTEXT_INLINE,
+    'weight' => 0,
+  );
+  $items[$ck_group_uri . '/%cool_keys_key_group/edit'] = array(
+    'title' => t('Edit'),
+    'access callback' => 'entity_access',
+    'access arguments' => array('edit', 'cool_keys_key_group', $ck_group_uri_argument_position),
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -10,
+  );
+  $items['cool-keys/redeemcode'] = array(
+    'title' => t('Redeem Code'),  // Required
+    'page callback' => 'campaign_api_cool_keys_redeem',
+    'access callback' => TRUE,
+    'access arguments' => array('access content'),
+    'file' => 'includes/campaign_api.pages.inc',
+    'type' => MENU_NORMAL_ITEM,
+  );
+  $items['cool-keys/redeemcodeurl'] = array(
+    'title' => t('Redeem Code'),  // Required
+    'page callback' => 'campaign_api_cool_keys_url_redeem',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+    'file' => 'includes/campaign_api.pages.inc',
+  );
+  $items[$ck_group_uri . '/keys/%/issue'] = array(
+    'title' => t('Issue a Key'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('campaign_api_issue_key_code_form', 4),
+    'access arguments' => array('administer coolkeys'),
+    'file' => 'includes/campaign_api.pages.inc',
+    'type' => MENU_NORMAL_ITEM,
+  );
+  $items[$ck_group_uri . '/keys/%/reclaim'] = array(
+    'title' => t('Reclaim a Key'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('campaign_api_reclaim_key_code_form', 4),
+    'access arguments' => array('administer coolkeys'),
+    'file' => 'includes/campaign_api.pages.inc',
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  return $items;
+}
+
+/**
+ * Title callback for campaign config. pages.
+ * @param Campaign $campaign
+ */
+function campaign_api_campaign_page_title($campaign) {
+  return t('Configure Campaign: ' . $campaign->title);
+}
+
+// ************************************* ENTITY INFO
+/**
+ * Implements hook_entity_info().
+ */
+function campaign_api_entity_info() {
+  $entities = array();
+  $entities['campaign_type'] = array(
+    'label' => t(' Campaign Type'),
+    'entity class' => 'CampaignType',
+    'controller class' => 'CampaignTypeController',
+    'base table' => 'campaign_type',
+    'fieldable' => FALSE,
+    'bundle of' => 'campaign',
+    'exportable' => TRUE,
+    'entity keys' => array(
+    'id' => 'type',
+    'label' => 'label',
+    ),
+    'module' => 'campaign_api',
+    'access callback' => 'campaign_access',
+    'view modes' => array(
+    'full' => array(
+      'label' => t('CampaignType (Full)'),
+      'custom settings' => FALSE,
+    ),
+    ),
+    'views controller class' => 'EntityDefaultViewsController',
+    'admin ui' => array(
+      'path' => 'admin/structure/-campaigns/types',
+      'file' => 'includes/campaign_api.admin.inc',
+      'controller class' => 'CampaignTypeUIController',
+      'menu wildcard' => '%campaign_type',
+    ),
+   );
+   $entities['campaign'] = array(
+    'label' => t(' Campaign'),
+    'entity class' => 'Campaign',
+    'controller class' => 'CampaignController',
+    'base table' => 'campaign',
+    'fieldable' => TRUE,
+    'entity keys' => array(
+    'id' => 'campaign_id',
+    'bundle' => 'type',
+    ),
+    'bundle keys' => array(
+     'bundle' => 'type',
+    ),
+    'bundles' => array(),
+    'load hook' => 'campaign_load',
+    'uri callback' => 'entity_class_uri',
+    'label callback' => 'entity_class_label',
+    'module' => 'campaign_api',
+    'access callback' => 'campaign_access',
+    'view modes' => array(
+    'full' => array(
+      'label' => t(' Campaign (Full)'),
+      'custom settings' => FALSE,
+    ),
+    ),
+    'views controller class' => 'EntityDefaultViewsController',
+    'admin ui' => array(
+      'title' => t(' Campaigns'),
+      'path' => 'admin/structure/-campaigns',
+      'file' => 'includes/campaign_api.admin.inc',
+      'controller class' => 'CampaignUIController',
+      'menu wildcard' => '%campaign',
+    ),
+   );
+  $entities['cool_keys_key_group'] = array(
+    'label' => t(' CoolKeys Group'),
+    'entity class' => 'CoolKeysGroup',
+    'controller class' => 'CoolKeysGroupController',
+    'base table' => 'cool_keys_key_groups',
+    'fieldable' => FALSE,
+    'exportable' => TRUE,
+    'entity keys' => array(
+      'id' => 'kgid',
+    ),
+    'load hook' => 'cool_keys_key_group_load',
+    'uri callback' => 'entity_class_uri',
+    //'label callback' => 'entity_class_label',
+    'module' => 'campaign_api',
+    'access callback' => 'campaign_api_key_group_access',
+    'view modes' => array(
+      'full' => array(
+        'label' => t('All CoolKeys Groups'),
+        'custom settings' => FALSE,
+      ),
+    ),
+    'views controller class' => 'EntityDefaultViewsController',
+    'admin ui' => array(
+      'title' => t('CoolKeys Groups'),
+      'path' => 'admin/structure/cool-keys-groups',
+      'file' => 'includes/campaign_api.admin.inc',
+      'controller class' => 'CoolKeysGroupUIController',
+    ),
+  );
+  return $entities;
+}
+
+/**
+* Implements hook_entity_info_alter().
+*/
+function campaign_api_entity_info_alter(&$entity_info) {
+  foreach (campaign_types() as $type => $info) {
+    $entity_info['campaign']['bundles'][$type] = array(
+      'label' => $info->label,
+      'admin' => array(
+        'path' => 'admin/structure/-campaigns/types/manage/%campaign_type',
+        'real path' => 'admin/structure/-campaigns/types/manage/' . $type,
+        'bundle argument' => 5,
+      ),
+    );
+  }
+}
+
+/**
+ * Returns a themed table for adding campaign_api.
+ */
+function campaign_type_table() {
+  $types = campaign_types();
+  $campaign = entity_get_info('campaign');
+  foreach ($types as $name=>$info) {
+    $content[$name]['title'] = 'Add Campaign type: "' . $info->label . '"';
+    $content[$name]['href'] = $campaign['admin ui']['path'] . '/add/' . $name;
+    $content[$name]['description'] = $info->description;
+    $content[$name]['localized_options'] = array();
+  }
+  return theme('campaign_api_list', array('content' => $content));
+}
+
+
+/**
+ * Returns HTML for a list of available alpha module entity types for node creation.
+ *
+ * @param $variables
+ *   An associative array containing:
+ *   - content: An array of alpha module types.
+ *
+ * @ingroup themeable
+ */
+function theme_campaign_api_list($variables) {
+  $content = $variables['content'];
+  $output = '';
+
+  if ($content) {
+    $output = '<dl class="-campaign-type-list">';
+    foreach ($content as $item) {
+      $output .= '<dt>' . l($item['title'], $item['href'], $item['localized_options']) . '</dt>';
+      $output .= '<dd>' . filter_xss_admin($item['description']) . '</dd>';
+    }
+    $output .= '</dl>';
+  }
+  else {
+    $output = '<p>' . t('You have not created any  campaign types yet. Go to the <a href="@create-content">campaign type creation page</a> to add a new  campaign type.', array('@create-content' => url('admin/structure/-campaigns/types/add'))) . '</p>';
+  }
+  return $output;
+}
+
+/**
+ * Form factory for campaign type forms.
+ * @param string $type
+ *   campaign type machine name 
+ * @param stdClass $entity
+ *   The entity to create a form for
+ * @param string $op
+ *   The operation (add, edit, etc). Not used currently.
+ */
+function campaign_api_forms_wrapper($type, $entity, $op='add') {
+  if (!isset($entity)) {
+    $entity = campaign_default_entity($type);
+  }
+  else {
+    $type = $entity->type;
+  }
+  $form = drupal_get_form('campaign_edit_' . $type . '_form', $entity);
+  return $form;
+}
+
+/**
+ * Implements hook_campaign_api_config_plugin_info().
+ */
+function campaign_api_campaign_api_config_plugin_info() {
+  $plugins = array();
+  $plugins['Key to Role Campaign'] = array(
+    'label' => t('Key to Role Campaign'),
+    'description' => t('Adds a role to a new or existing user account with CoolKey activation.'),
+    'class' => 'CampaignKeyToRole',
+    'file' => array(
+      'type' => 'inc',
+      'module' => 'antorrent_campaigns',
+      'file' => 'plugins/CampaignKeyToRole',
+    ),
+  );
+
+  return $plugins;
+}
+
+/**
+ * Implements hook_forms().
+ *
+ * All campaign forms share the same form handler.
+ */
+function campaign_api_forms() {
+   $forms = array();
+   if ($types = campaign_types()) {
+     foreach (array_keys($types) as $type) {
+       $forms['campaign_edit_' . $type . '_form']['callback'] = 'campaign_form';
+     }
+   }
+   return $forms;
+}
+
+/**
+* List of  Campaign Types.
+*/
+function campaign_types($owner_name = NULL) {
+   $campaign_types = entity_load('campaign_type', isset($owner_name) ? array($owner_name) : FALSE, array(), TRUE);
+   return isset($owner_name) ? reset($campaign_types) : $campaign_types;
+}
+
+/**
+* Load  Campaign Type.
+*/
+function campaign_type_load($campaign_type) {
+  return campaign_types($campaign_type);
+}
+
+/**
+* Save  Campaign type entity.
+*/
+function campaign_type_save($campaign_type) {
+  entity_save('campaign_type', $campaign_type);
+}
+
+/**
+* Delete single  Campaign type.
+*/
+function campaign_type_delete($campaign_type) {
+  entity_delete('campaign_type', entity_id('campaign_type' ,$campaign_type));
+}
+
+/**
+* Delete multiple  Campaign types.
+*/
+function campaign_type_delete_multiple($campaign_type_ids) {
+  entity_delete_multiple('campaign_type', $campaign_type_ids);
+}
+
+/**
+ * Implements hook_entity_property_info().
+ */
+function campaign_api_entity_property_info() {
+  $properties = array();
+  $properties['campaign_id'] = array(
+    'label' => t('Campaign ID'),
+    'description' => t('The unique id of the campaign'),
+  );
+  $properties['class'] = array(
+    'label' => t('Definition Class'),
+    'description' => t('The class defining the campaign'),
+    'type' => 'text',
+  );
+  $properties['title'] = array(
+    'label' => t('Title'),
+    'type' => 'text',
+    'description' => t('The short title for the campaign'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer  campaigns',
+    'schema field' => 'title',
+  );
+  $properties['description'] = array(
+    'label' => t('Description'),
+    'type' => 'text',
+    'description' => t('The short description of the campaign'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer  campaigns',
+    'schema field' => 'description',
+  );
+  $properties['activates'] = array(
+    'label' => t('Activates'),
+    'type' => 'integer',
+    'description' => t('When the campaign activates'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer  campaigns',
+    'schema field' => 'activates',
+  );
+  $properties['expires'] = array(
+    'label' => t('Expires'),
+    'type' => 'integer',
+    'description' => t('When the campaign expires'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer  campaigns',
+    'schema field' => 'expires',
+  );
+
+  $return['campaign'] = array('properties' => $properties);
+
+  $properties = array();
+  $properties['created'] = array(
+    'label' => t('Date Created'),
+    'type' => 'text',
+    'description' => t('The date that the group was created.'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer coolkeys',
+    'schema field' => 'created',
+  );
+  $properties['kgid'] = array(
+    'label' => t('kgid'),
+    'type' => 'text',
+    'description' => t('The machine_name of the group'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer coolkeys',
+    'required' => true,
+    'schema field' => 'kgid',
+  );
+  $properties['uid'] = array(
+    'label' => t('Author'),
+    'type' => 'integer',
+    'description' => t('The author of the group'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer coolkeys',
+    'required' => true,
+    'schema field' => 'uid',
+  );
+  $properties['title'] = array(
+    'label' => t('Title'),
+    'type' => 'text',
+    'description' => t('The short title for the group'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer coolkeys',
+    'schema field' => 'title',
+  );
+  $properties['description'] = array(
+    'label' => t('Description'),
+    'type' => 'text',
+    'description' => t('The short description of the group'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer coolkeys',
+    'schema field' => 'description',
+  );
+  $properties['weight'] = array(
+    'label' => t('Weight'),
+    'type' => 'integer',
+    'description' => t('The weight (order) of execution for the group'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer coolkeys',
+    'schema field' => 'weight',
+  );
+  $properties['max_uses'] = array(
+    'label' => t('Max Uses'),
+    'type' => 'integer',
+    'description' => t('The number of times a key in the group may be used'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer coolkeys',
+    'schema field' => 'max_uses',
+  );
+  $properties['num_keys'] = array(
+    'label' => t('Number of Keys'),
+    'type' => 'integer',
+    'description' => t('The number of keys in the group'),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer coolkeys',
+    'schema field' => 'num_keys',
+  );
+
+  $return['cool_keys_key_group'] = array('properties' => $properties);
+
+  return $return;
+}
+
+/**
+ * Returns a default campaign entity.
+ * @param string $type
+ *   The campaign type to create.
+ * @return Campaign $campaign
+ *   An instantiated campaign entity, unsaved.
+ */
+function campaign_default_entity($type) {
+   $campaign = new Campaign();
+   $campaign->type = $type;
+   $campaign->is_new = TRUE;
+   $campaign->module = 'campaign_api';
+   $campaign->class = 'CampaignDefault';
+   $campaign->data = array();
+   return $campaign;
+}
+
+/**
+ * Access function for the entity.
+ * @param string $op
+ * @param stdClass $entity (variable for the entity)
+ * @param stdClass $account
+ * @param string $entity_type
+ */
+function campaign_access($op, $coolkeys, $account = null, $entity_type = null) {
+  if (!isset($account)) {
+    global $user;
+    $account = $user;
+  }
+  switch ($op) {
+    default: return user_access('administer  campaigns');
+  }
+}
+
+/**
+* Load an entity.
+*/
+function campaign_load($id, $reset = FALSE) {
+  $campaign = campaign_load_multiple(array($id), array(), $reset);
+  return reset($campaign);
+}
+
+/**
+* Load multiple entities based on certain conditions.
+*/
+function campaign_load_multiple($ids = array(), $conditions = array(), $reset = FALSE) {
+  return entity_load('campaign', $ids, $conditions, $reset);
+}
+
+/**
+* Save alpha module entity.
+*/
+function campaign_save($campaign) {
+ entity_save('campaign', $campaign);
+}
+
+/**
+* Delete single alpha module entity.
+*/
+function campaign_delete($campaign_id) {
+  entity_delete('campaign', entity_id('campaign', $campaign_id));
+}
+
+/**
+* Delete multiple alpha module entities.
+*/
+function campaign_delete_multiple($campaign_ids) {
+  entity_delete_multiple('campaign', $campaign_ids);
+}
+
+//*****Schedule cron jobs.
+
+/**
+ * Implements hook_cron_job_scheduler_info().
+ */
+function campaign_api_cron_job_scheduler_info() {
+  $schedulers = array();
+
+  $schedulers['campaign_activate'] = array(
+    'worker callback' => 'campaign_api_activate_campaign',
+  );
+  $schedulers['campaign_expire'] = array(
+    'worker callback' => 'campaign_api_expire_campaign',
+  );
+
+  $schedulers['ck_group_activate'] = array(
+    'worker callback' => 'campaign_api_activate_group',
+  );
+  $schedulers['ck_group_expire'] = array(
+    'worker callback' => 'campaign_api_expire_group',
+  );
+
+  return $schedulers;
+}
+
+/**
+ * Cron job scheduler callback.
+ * Activates a campaign when it is time.
+ */
+function campaign_api_activate_campaign($job) {
+  $campaign = $job->data['campaign'];
+  $campaign->activate();
+  $plugin = campaign_api_get_campaign_plugin($campaign);
+  $plugin->update($campaign);
+}
+
+/**
+ * Cron job scheduler callback.
+ * Expires a campaign when it is time.
+ */
+function campaign_api_expire_campaign($job) {
+  $campaign = $job->data['campaign'];
+  $campaign->expire();
+  $plugin = campaign_api_get_campaign_plugin($campaign);
+  $plugin->update($campaign);
+}
+
+/**
+ * Job scheduler worker callback for 'group_activate'.
+ * Sets a group to active.
+ * @param array $job
+ */
+function campaign_api_activate_group($job) {
+  $ck_group = cool_keys_key_group_load($job['id']);
+  $ck_group->activate();
+}
+
+/**
+ * Job scheduler worker callback for 'group_expire'.
+ * Sets a group to not active.
+ * @param array $job
+ */
+function campaign_api_expire_group($job) {
+  $ck_group = cool_keys_key_group_load($job['id']);
+  $ck_group->expire();
+}
+
+/**
+ * Load a CoolKeys group.
+ */
+function cool_keys_key_group_load($kgid, $reset = FALSE) {
+  $ck_groups = cool_keys_key_group_load_multiple(array($kgid), array(), $reset);
+  return reset($ck_groups);
+}
+
+/**
+ * Load multiple CoolKeys groups based on certain conditions.
+ */
+function cool_keys_key_group_load_multiple($kgids = array(), $conditions = array(), $reset = FALSE) {
+  return entity_load('cool_keys_key_group', $kgids, $conditions, $reset);
+}
+
+/**
+ * Save CoolKeys group.
+ */
+function cool_keys_key_group_save($ck_group) {
+  $return = entity_save('cool_keys_key_group', $ck_group);
+}
+
+/**
+ * Delete single CoolKeys group.
+ */
+function cool_keys_key_group_delete($ck_group) {
+  entity_delete('cool_keys_key_group', entity_id('cool_keys_key_group' ,$ck_group));
+}
+
+/**
+ * Delete multiple CoolKeys groups.
+ */
+function cool_keys_key_group_delete_multiple($ck_group_ids) {
+  entity_delete_multiple('cool_keys_key_group', $ck_group_ids);
+}
+
+/**
+ * Helper function returns a key group from a key code.
+ * @param $ck_key
+ *   The key code used to return a key group.
+ * @return $ck_group
+ *   A cool keys group entity associated with the key code.
+ */
+function _get_coolkey_group_from_key($ck_key) {
+  $key_query = db_select('cool_keys_key_codes');
+  $key_query->fields('cool_keys_key_codes', array('kcid', 'kgid', 'key_code', 'issued'));
+  $key_query->condition('key_code', $ck_key);
+  $key_result = $key_query->execute()->fetchAssoc();
+
+  if($key_result) {
+    $kgid = $key_result['kgid'];
+    if ($ck_group = cool_keys_key_group_load($kgid)) {
+      return $ck_group;
+    }
+  }
+  return FALSE;
+}
+
+
+/**
+ * Helper function returns whether a key code has been issued.
+ * @param $ck_key
+ *   The key code to check.
+ * @return TRUE===1 if issued, FALSE===0 otherwise.
+ */
+function _key_code_is_issued($ck_key) {
+  $key_query = db_select('cool_keys_key_codes');
+  $key_query->fields('cool_keys_key_codes', array('key_code', 'issued'));
+  $key_query->condition('key_code', $ck_key);
+  $key_result = $key_query->execute()->fetchAssoc();
+
+  if($key_result) {
+    return ($key_result['issued']);
+  }
+}
+
+/**
+ * Implements hook_views_data_alter.
+ * We expose some links to the views implementation.
+ * @param array $data
+ */
+function campaign_api_views_data_alter(&$data) {
+  $data['cool_keys_key_groups']['kgid'] = array(
+    'field' => array(
+      'title' => t('KGID'),
+      'help' => t('Key group id.'),
+      'handler' => 'views_handler_field',
+    ),
+  );
+  $data['cool_keys_key_groups']['edit_link'] = array(
+    'field' => array(
+      'title' => t('Edit link'),
+      'help' => t('Provide a simple link to edit the group.'),
+      'handler' => 'views_handler_field_group_link_edit',
+    ),
+  );
+  $data['cool_keys_key_groups']['key_link'] = array(
+    'field' => array(
+      'title' => t('Keys link'),
+      'help' => t('Provide a simple link to the keys of the group.'),
+      'handler' => 'views_handler_field_group_link_key',
+    ),
+  );
+  $data['cool_keys_key_groups']['delete_link'] = array(
+    'field' => array(
+      'title' => t('Delete link'),
+      'help' => t('Provide a simple link to delete the group.'),
+      'handler' => 'views_handler_field_group_link_delete',
+    ),
+  );
+  $data['cool_keys_key_groups']['weight'] = array(
+    'field' => array(
+      'title' => t('Weight'),
+      'help' => t('Execution weight (order) of this group'),
+      'handler' => 'views_handler_field_numeric',
+    ),
+    'sort' => array(
+      'title' => t('Weight'),
+      'help' => t('Sort by weight (execution order)'),
+      'handler' => 'views_handler_sort',
+    ),
+  );
+  $data['cool_keys_key_groups']['activates'] = array(
+    'field' => array(
+      'title' => t('Group Activation Date'),
+      'help' => t('Date that the group activates'),
+      'handler' => 'views_handler_field_group_activates_date',
+    ),
+  );
+  $data['cool_keys_key_groups']['expires'] = array(
+    'field' => array(
+      'title' => t('Group Expires Date'),
+      'help' => t('Date that the group expires'),
+      'handler' => 'views_handler_field_group_expires_date',
+    ),
+  );
+
+  // ----------------------------------------------------------------
+  //  Cool Keys Codes Table -- basic table information.
+  $data['cool_keys_key_codes']['table']['group'] = t(' CoolKeys Group');
+  // Advertise this table as a possible base table
+  $data['cool_keys_key_codes']['table']['base'] = array(
+    'field' => 'kcid',
+    'title' => t('Key Codes'),
+    'weight' => -10,
+    'defaults' => array(
+      'field' => 'kcid',
+    ),
+  );
+  $data['cool_keys_key_codes']['table']['join'] = array(
+    'cool_keys_key_groups' => array(
+      'left_field' => 'kgid',
+      'field' => 'kgid',
+    ),
+  );
+  $data['cool_keys_key_codes']['kgid'] = array(
+    'relationship' => array(
+      'title' => t('Group ID'),
+      'help' => t('Relate content to the group it belongs to.'),
+      'handler' => 'views_handler_relationship',
+      'base' => 'cool_keys_key_groups',
+      'field' => 'kgid',
+      'label' => t('group id'),
+    ),
+    'argument' => array(
+      'field' => 'kgid',
+      'handler' => 'views_handler_argument',
+      'title' => t('Group ID'),
+      'help' => t('A Cool Keys Group ID.'),
+    ),
+    'field' => array(
+      'title' => t('Key Group'),
+      'help' => t('The parent group of the key code.'),
+      'handler' => 'views_handler_field',
+    ),
+  );
+  // You must expose a Key Code (kcid) field in the view for the action field below to work.
+  $data['cool_keys_key_codes']['kcid'] = array(
+    'field' => array(
+      'title' => t('Key Code ID'),
+      'help' => t('The unique key code ID.'),
+      'handler' => 'views_handler_field_numeric',
+    ),
+  );
+  $data['cool_keys_key_codes']['key_code'] = array(
+    'field' => array(
+      'title' => t('Key Code'),
+      'help' => t('The unique key code.'),
+      'handler' => 'views_handler_field',
+    ),
+  );
+  $data['cool_keys_key_codes']['max_uses'] = array(
+    'field' => array(
+      'title' => t('Max Uses'),
+      'help' => t('The max number a code may be used.'),
+      'handler' => 'views_handler_field_numeric',
+    ),
+  );
+  $data['cool_keys_key_codes']['num_used'] = array(
+    'field' => array(
+      'title' => t('Current Uses'),
+      'help' => t('The number of times a code has currently been used.'),
+      'handler' => 'views_handler_field_numeric',
+    ),
+  );
+  $data['cool_keys_key_codes']['issued'] = array(
+    'field' => array(
+      'title' => t('Issued'),
+      'help' => t('Has a code been issued?'),
+      'handler' => 'views_handler_field_issued',
+    ),
+  );
+  // This is an action link only, so not part of the entity or any data tables.
+  // So tie this to the Key Code (kcid) field in the view for this field to work.
+  $data['cool_keys_key_codes']['issue_link'] = array(
+    'field' => array(
+      'group' => t('Cool Keys'),
+      'real field' => 'kcid',
+      'title' => t('Action'),
+      'help' => t('Link to issue or reclaim key codes'),
+      'handler' => 'views_handler_field_issue_link_action',
+    ),
+  );
+}
+
+
+/**
+ * Redeems a key code.
+ * @param integer $ck_code
+ *   The key code to redeem.
+ * @param array $args
+ *   arguments array to pass on to rules event.
+ */
+function cool_keys_redeem_key($ck_code, $args = array()) {
+  $key_query = db_select('cool_keys_key_codes');
+  $key_query->fields('cool_keys_key_codes', array('kgid', 'num_used', 'max_uses'));
+  $key_query->condition('key_code', $ck_code);
+  $key_result = $key_query->execute()->fetchAssoc();
+
+  $ck_group = cool_keys_key_group_load($key_result['kgid']);
+  $ck_used = $key_result['num_used'];
+  $max_uses = $key_result['max_uses'];
+
+  // If num used == max uses return false.
+  // Otherwise update num used.
+  if (($ck_group->set_unlimited_uses != 1) && ($ck_used >= $max_uses)) {
+    rules_invoke_event('cool_keys_reached_max_uses', $ck_group, $args);
+    return FALSE;
+  }
+
+  db_update('cool_keys_key_codes')
+    ->expression('num_used', 'num_used+1')
+    ->condition('key_code', $ck_code)
+    ->execute();
+
+  rules_invoke_event('ckcode_apply_code_' . $ck_group->kgid, $ck_group, $args);
+  rules_invoke_event('ckcode_applied', $ck_group, $args);
+}
+
+/**
+ * Implements hook_webform_component_info().
+ */
+function campaign_api_webform_component_info() {
+  $components = array();
+  $components['coolkeyentry'] = array(
+    'label' => t('Cool Keys Entry Element'),
+    'description' => t('Add a  - Cool Keys entry element. Users fill in the key and the associated cool keys rule event fires.'),
+    'features' => array(
+      'csv' => FALSE,
+      'email' => FALSE,
+      'email_addresses' => FALSE,
+      'email_name' => FALSE,
+      'required' => TRUE,
+      'title_display' => TRUE,
+      'title_inline' => FALSE,
+      'conditional' => FALSE,
+      'group' => FALSE,
+      'spam_analysis' => FALSE,
+      'attachment' => FALSE,
+    ),
+    'file' => 'includes/campaign_api.webform.inc'
+  );
+  return $components;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function campaign_api_theme() {
+  $themes = array();
+  $themes['campaign_api_list'] = array(
+    'variables' => array('content' => NULL),
+  );
+  $themes['campaign_api_config_table'] = array(
+    'variables' => array('content' => ''),
+    'template' => 'theme/campaign_api_config_table',
+  	'file' => 'theme/theme.inc',
+  );
+  $themes['campaign_api_campaign_page'] = array(
+    'variables' => array('campaign' => NULL),
+    'template' => 'theme/campaign_api_campaign_page',
+    'file' => 'theme/theme.inc',
+  );
+  return $themes;
+}
+
+/**
+ * Create plugin componenets and add them to a campaign object.
+ * @param Campaign $campaign
+ *   The campaign to use.
+ */
+function campaign_api_create_campaign_components($campaign) {
+  $plugin = campaign_api_get_campaign_plugin($campaign);
+  // Get the plugin campaign components.
+  $plugin_data = $plugin->create($campaign);
+  // Create entities.
+  foreach($plugin_data['entities'] as $type => $entities) {
+    foreach($entities as $key => $entity) {
+      // Save the entity.
+      entity_save($type, $entity);
+      // Add the saved entity into the plugin data.
+      $plugin_data['entities'][$type][$key] = $entity;
+    }
+  }
+  // Attach the plugin data to the campaign.
+  $campaign->data['plugin_data'] = $plugin_data;
+  return $campaign;
+}
+
+/**
+ * Update plugin componenets.
+ * @param Campaign $campaign
+ *   The campaign to use.
+ */
+function campaign_api_update_campaign_components($campaign) {
+  $plugin = campaign_api_get_campaign_plugin($campaign);
+  $plugin_data = $plugin->update($campaign);
+  // Update entities.
+  foreach($plugin_data['entities'] as $type => $entities) {
+    foreach($entities as $key => $entity) {
+      if ($entity->campaign_updated) {
+        // Save the entity.
+        entity_save($type, $entity);
+        // Add the saved entity into the plugin data.
+        $plugin_data['entities'][$type][$key] = $entity;
+      }
+    }
+  }
+  // Attach the plugin data to the campaign.
+  $campaign->data['plugin_data'] = $plugin_data;
+  return $campaign;
+}
+
+/**
+ * Returns an initialized plugin for a campaign.
+ * @param Campaign $campaign
+ */
+function campaign_api_get_campaign_plugin($campaign) {
+  // Get the plugin data and initialize the plugin.
+  $type = campaign_type_load($campaign->type);
+  $class = $type->class;
+  $plugin = new $class($campaign);
+  return $plugin;
+}
+
+/**
+ * Rebuilds default entities defined in campaigns.
+ * @param Campaign $campaign
+ *   The campaign to use.
+ */
+function campaign_api_rebuild_default_entities($campaign) {
+  // Rules.
+  if (empty($campaign->data['plugin_data']['rules'])) {
+    return;
+  }
+  $entity_types[] = 'rules_config';
+  // Entities.
+  // @todo Only need this if we have default entities other than rules.
+  entity_defaults_rebuild($entity_types);
+}
+
+/**
+ * Returns a machine name for a campaign, based on title.
+ * @param Campaign $campaign
+ *   The campaign to use.
+ */
+function campaign_api_get_campaign_machine_name($campaign) {
+  if (isset($campaign->title)) {
+    return substr(preg_replace('/[\s|-]+/', '_', $campaign->title), 0, 15);
+  }
+  else {
+    return NULL;
+  }
+}
+
+/**
+ * Helper function to set activate job on a campaign.
+ * @param Campaign $campaign
+ *   The campaign to use.
+ */
+function campaign_api_add_activate_job($campaign) {
+  $job = array(
+    'id' => $campaign->campaign_id,
+    'type' => 'campaign_activate',
+    'period' => $campaign->activeDate() - time(),
+    'periodic' => false,
+    'data' => array(
+      'campaign' => $campaign,
+    ),
+  );
+  $scheduler = JobScheduler::get('campaign_activate');
+  if (!($scheduler->check($job))) {
+    $scheduler->set($job);
+  }
+}
+
+/**
+ * Helper function to remove activate job on a campaign.
+ * @param Campaign $campaign
+ *   The campaign to use.
+ */
+function campaign_api_remove_activate_job($campaign) {
+  $job = array(
+    'id' => $campaign->campaign_id,
+    'type' => 'campaign_activate',
+  );
+  $scheduler = JobScheduler::get('campaign_activate');
+  $scheduler->remove($job);
+}
+
+/**
+ * Helper function to set expire job on a campaign.
+ * @param Campaign $campaign
+ *   The campaign to use.
+ */
+function campaign_api_add_expire_job($campaign) {
+  $job = array(
+    'id' => $campaign->campaign_id,
+    'type' => 'campaign_expire',
+    'period' => (($campaign->expireDate() - time()) < 0) ? NULL : $campaign->expireDate() - time(),
+    'periodic' => false,
+     'data' => array(
+        'campaign' => $campaign,
+      ),
+  );
+  $scheduler = JobScheduler::get('campaign_expire');
+  if (!($scheduler->check($job))) {
+    $scheduler->set($job);
+  }
+}
+
+/**
+ * Helper function to remove expire job on a campaign.
+ * @param Campaign $campaign
+ *   The campaign to use.
+ */
+function campaign_api_remove_expire_job($campaign) {
+  $job = array(
+    'id' => $campaign->campaign_id,
+    'type' => 'campaign_expire',
+  );
+  $scheduler = JobScheduler::get('campaign_expire');
+  $scheduler->remove($job);
+}
+
+/**
+ * Helper function to set jobs on a campaign.
+ * @param Campaign $campaign
+ *   The campaign to use.
+ */
+function campaign_api_update_jobs($campaign) {
+  // Set activation and expiration jobs as appropriate.
+  if (!($campaign->isActive()) && ($campaign->activeDate() > time())) {
+    campaign_api_add_activate_job($campaign);
+  }
+  else {
+    campaign_api_remove_activate_job($campaign);
+  }
+  if ($campaign->expireDate() && $campaign->set_expire == 1) {
+    campaign_api_add_expire_job($campaign);
+  }
+  else {
+    campaign_api_remove_expire_job($campaign);
+  }
+}
+
+/**
+ * Helper function removes jobs on a campaign.
+ * @param Campaign $campaign
+ *   The campaign to use.
+ */
+function campaign_api_remove_jobs($campaign) {
+  if (!($campaign->isActive()) && ($campaign->activeDate() > time())) {
+    campaign_api_remove_activate_job($campaign);
+  }
+  if ($campaign->expireDate() && $campaign->set_expire == 1) {
+    campaign_api_remove_expire_job($campaign);
+  }
+}
+
+/**
+ * Regex replace naughty characters from key code prefix.
+ * @param cool_keys_key_group $ck_group
+ */
+function campaign_api_cool_keys_fix_prefix($ck_group) {
+  if (isset($ck_group->data['key_code_prefix'])) {
+    $ck_group->data['key_code_prefix'] = strtolower(preg_replace('/[\s|-]+/', '_', $ck_group->data['key_code_prefix']));
+  }
+}
+
+
+/**
+ * Helper function to set jobs on a cool_keys.
+ * @param cool_keys_key_group $cool_keys
+ *   The cool_keys to use.
+ */
+function campaign_api_cool_keys_update_jobs($ck_group) {
+  // Set activation and expiration jobs as appropriate.
+  if (!($ck_group->isActive()) && ($ck_group->activeDate() > time())) {
+    campaign_api_cool_keys_add_activate_job($ck_group);
+  }
+  else {
+    campaign_api_cool_keys_remove_activate_job($ck_group);
+  }
+  if ($ck_group->expireDate() && $ck_group->set_expire == 1){
+    campaign_api_cool_keys_add_expire_job($ck_group);
+  }
+  else {
+    campaign_api_cool_keys_remove_expire_job($ck_group);
+  }
+}
+
+/**
+ * Helper function removes jobs on a cool_keys.
+ * @param cool_keys_key_group $cool_keys
+ *   The cool_keys to use.
+ */
+function campaign_api_cool_keys_remove_jobs($ck_group) {
+  if (!($ck_group->isActive()) && ($ck_group->activeDate() > time())) {
+    campaign_api_cool_keys_remove_activate_job($ck_group);
+  }
+  if ($ck_group->expireDate() && $ck_group->set_expire == 1){
+    campaign_api_cool_keys_remove_expire_job($ck_group);
+  }
+}
+
+/**
+ * Helper function to set activate job on a cool_keys.
+ * @param cool_keys_key_group $cool_keys
+ *   The cool_keys to use.
+ */
+function campaign_api_cool_keys_add_activate_job($ck_group) {
+  $job = array(
+    'id' => $ck_group->kgid,
+    'type' => 'ck_group_activate',
+    'period' => $ck_group->activeDate() - time(),
+    'periodic' => false,
+    'data' => array(
+      'ck_group' => $ck_group,
+    ),
+  );
+  $scheduler = JobScheduler::get('ck_group_activate');
+  if (!($scheduler->check($job))) {
+    $scheduler->set($job);
+  }
+}
+
+
+/**
+ * Helper function to set expire job on a cool_keys.
+ * @param cool_keys_key_group $cool_keys
+ *   The cool_keys to use.
+ */
+function campaign_api_cool_keys_add_expire_job($ck_group) {
+  $job = array(
+    'id' => $ck_group->kgid,
+    'type' => 'ck_group_expire',
+    'period' => (($ck_group->expireDate() - time()) < 0) ? NULL : $ck_group->expireDate() - time(),
+    'periodic' => false,
+    'data' => array(
+      'cool_keys' => $ck_group,
+    ),
+  );
+  $scheduler = JobScheduler::get('ck_group_expire');
+  if (!($scheduler->check($job))) {
+    $scheduler->set($job);
+  }
+}
+
+/**
+ * Helper function to remove expire job on a cool_keys.
+ * @param Campaign $cool_keys
+ *   The cool_keys to use.
+ */
+function campaign_api_cool_keys_remove_expire_job($ck_group) {
+  $job = array(
+    'id' => $ck_group->kgid,
+    'type' => 'ck_group_expire',
+  );
+  $scheduler = JobScheduler::get('ck_group_expire');
+  $scheduler->remove($job);
+}
+
+/**
+ * Helper function to remove activate job on a cool_keys.
+ * @param cool_keys_key_group $cool_keys
+ *   The cool_keys to use.
+ */
+function campaign_api_cool_keys_remove_activate_job($ck_group) {
+  $job = array(
+    'id' => $ck_group->kgid,
+    'type' => 'ck_group_activate',
+  );
+  $scheduler = JobScheduler::get('ck_group_activate');
+  $scheduler->remove($job);
+}
+
+/**
+ * Implements hook_discount_conditions_info().
+ */
+function campaign_api_discount_condition_info($discount) {
+  $conditions['promo_code_discount'] = array(
+    'name' => 'promo_code_discount',
+    'label' => t('Promo Code Discount'),
+    'elements' => campaign_api_discount_condition_elements($discount),
+  );
+  $conditions['promo_code_discount_number'] = array(
+    'name' => 'promo_code_discount_number',
+    'label' => t('Promo Code Discount - With a minimum number of items'),
+    'elements' => campaign_api_discount_condition_elements($discount),
+    'uses' => array(
+      'minimum_number',
+    ),
+    'callbacks' => array(
+      '_discounts_conditions_promo_code_discount_execute',
+    ),
+  );
+  $conditions['promo_code_discount_total'] = array(
+    'name' => 'promo_code_discount_total',
+    'label' => t('Promo Code Discount - With a minimum order total'),
+    'elements' => campaign_api_discount_condition_elements($discount),
+    'uses' => array(
+      'minimum_total',
+    ),
+    'callbacks' => array(
+      '_discounts_conditions_promo_code_discount_execute',
+    ),
+  );
+  return $conditions;
+}
+
+
+/**
+ * Defines the form elements for the promo code discount condition.
+ * @param Discount $discount
+ * @return array $elements
+ *   The form elements.
+ */
+function campaign_api_discount_condition_elements($discount) {
+  $elements['promo_code_title'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Promo Code Title'),
+    '#description' => t('Give your promo code a title.'),
+    '#required' => TRUE,
+  );
+  $promo_code_prefix = (is_object($discount)) ? $discount->getCondition('promo_code_coolkey_prefix') : NULL;
+  $elements['promo_code_coolkey_prefix'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Prefix'),
+    '#description' => t('Prefix for the promo codes. It will be appended to the beginning of the unique code. If none is supplied "promo_code" will be appended.'),
+    '#required' => TRUE,
+    '#disabled' => (!empty($promo_code_prefix)) ? TRUE : FALSE,
+  );
+  $promo_code_number = (is_object($discount)) ? $discount->getCondition('promo_code_number') : NULL;
+  $elements['promo_code_short_name'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Shortend Name'),
+    '#description' => t('If checked, then the code will work using only the "prefix" and will not require the unique key. This will only work with 1 code with infinite uses.'),
+    '#default_value' => 1,
+  );
+  $elements['promo_code_number'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Number of codes'),
+    '#description' => t('Enter the number of codes that will be available. Enter 0 for unlimited codes'),
+    '#element_validate' => array('campaign_api_numeric_validate'),
+    '#required' => TRUE,
+    '#disabled' => (!empty($promo_code_number)) ? TRUE : FALSE,
+    '#states' => array(
+      'invisible' => array(':input[name="data[conditions][promo_code_short_name]"]' => array('checked' => TRUE)),
+    ),
+    '#default_value' => 1,
+  );
+  $elements['promo_code_uses'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Number of uses'),
+    '#description' => t('Enter the number of times each code can be used. Enter 0 for unlimited uses.'),
+    '#element_validate' => array('campaign_api_numeric_validate'),
+    '#required' => TRUE,
+    '#default_value' => 0,
+    '#states' => array(
+      'invisible' => array(':input[name="data[conditions][promo_code_short_name]"]' => array('checked' => TRUE)),
+    ),
+  );
+  $elements['kgid'] = array(
+    '#type' => 'hidden',
+  );
+  $elements['rule'] = array(
+    '#type' => 'hidden',
+  );
+  return $elements;
+}
+
+/**
+ * Validate numeric fields.
+ */
+function campaign_api_numeric_validate($element, &$form_state, $form) {
+  if (!is_numeric($element['#value'])) {
+    form_error($element, t('Must be a numeric value'));
+  }
+}
+
+/**
+ * Creates/edits a cool keys group for the discount.
+ * @param Discount $discount
+ */
+function campaign_api_set_ck_group($discount) {
+  // If this is not a new discount then load it.
+  $kgid = $discount->getCondition('kgid');
+  if (!empty($kgid)) {
+    $group = cool_keys_key_group_load($discount->getCondition('kgid'));
+  }
+  // Otherwise (insert) then create a new cool keys group.
+  else {
+    $group = new CoolKeysGroup();
+    $group->is_new = TRUE;
+  }
+
+  // Set the cool keys group properties and save.
+  $prefix = $discount->getCondition('promo_code_coolkey_prefix');
+  $prefix = isset($prefix) ? preg_replace('/[\s|-]+/', '_', $prefix) : 'promo_code';
+  $group->title = $discount->getCondition('promo_code_title');
+  $group->kgid = (isset($group->kgid)) ? $group->kgid : $prefix . '_' . time();
+  $group->data['key_code_prefix'] = $prefix;
+  $group->description = t("Cool key group for promo code discount @s", array('@s' => $discount->label));
+  $group->set_unlimited_keys = ($discount->getCondition('promo_code_number') == 0) ? 1 : 0;
+  $group->set_unlimited_uses = ($discount->getCondition('promo_code_uses') == 0) ? 1 : 0;
+  $group->num_keys = $discount->getCondition('promo_code_number');
+  $group->max_uses = $discount->getCondition('promo_code_uses');
+  $group->uid = $discount->uid;
+  $group->active = $discount->data['descriptives']['active'];
+  $group->activates = serialize($discount->data['descriptives']['activates']);
+  $group->set_expire = $discount->data['descriptives']['expires_select'];
+  $group->expires = isset($discount->data['descriptives']['expires']) ? serialize($discount->data['descriptives']['expires']) : NULL;
+  $group->weight = $discount->data['descriptives']['weight'];
+  $group->module = 'campaign_api';
+  cool_keys_key_group_save($group);
+
+  // If we're using the shortened code then save the prefix and the
+  // KGID in a variable.
+  if ($discount->getCondition('promo_code_short_name')) {
+    // Grab the generated key code.
+    $key_query = db_select('cool_keys_key_codes');
+    $key_query->fields('cool_keys_key_codes', array('key_code'));
+    $key_query->condition('kgid', $group->kgid);
+    $result = $key_query->execute();
+    $key_code = $result->fetchField();
+    variable_set("promo_code_{$discount->getCondition('promo_code_coolkey_prefix')}", $key_code);
+  }
+  // If this is a new discount, then set the cool keys group
+  // id in the discount properties and save.
+  if (empty($kgid)) {
+    $discount->data['conditions']['kgid'] = $group->kgid;
+    _discount_save($discount);
+  }
+}
+
+/**
+ * Creates a rule to set a cookie_monster cookie on cool key use.
+ * @param Discount $discount
+ */
+function campaign_api_set_rule($discount) {
+  $discount = _discount_load($discount->fdid);
+  // Clear rules.
+  unset($discount->data['conditions']['rule']);
+  // Add cookie add rule.
+  $rule = rules_reaction_rule();
+  $rule->label = t('Promo Code Rule for Discount @s', array('@s' => $discount->label));
+  $rule->active = 1;
+  $rule->weight = 0;
+  $rule->module = 'campaign_api';
+  $rule->event('ckcode_apply_code_' . $discount->getCondition('kgid'));
+  $data = json_encode(array($discount, cool_keys_key_group_load($discount->getCondition('kgid'))));
+  $rule->action('cookie_monster_rules_set_cookie', array(
+    'cookie_id' => $discount->getCondition('kgid'),
+    'cookie_data' => $data,
+  ));
+  $discount->data['conditions']['rule'][] = $rule;
+  // Add cookie delete rule.
+  $rule = rules_reaction_rule();
+  $rule->label = t('Remove promo code rule for Discount @s', array('@s' => $discount->label));
+  $rule->active = 1;
+  $rule->weight = 0;
+  $rule->module = 'campaign_api';
+  $rule->event('commerce_checkout_complete');
+  $data = json_encode(array($discount, cool_keys_key_group_load($discount->getCondition('kgid'))));
+  $rule->action('cookie_monster_rules_expire_cookie', array(
+    'cookie_id' => $discount->getCondition('kgid'),
+  ));
+  $discount->data['conditions']['rule'][] = $rule;
+  _discount_save($discount);
+}
+
+/**
+ * Implements hook__discount_insert().
+ */
+function campaign_api__discount_insert($discount) {
+  $discount = _discount_load($discount->fdid);
+  // Only proceed if we have a promo_code_discount condition.
+  if (!(strpos($discount->getCondition('condition_type'), 'promo_code') === 0)) {
+    return;
+  }
+  $discount->isNew = TRUE;
+  campaign_api_set_ck_group($discount);
+  campaign_api_set_rule($discount);
+}
+
+/**
+ * Implements hook__discount_update().
+ */
+function campaign_api__discount_update($discount) {
+  $discount = _discount_load($discount->fdid);
+  // Only proceed if we have a promo_code_discount condition.
+  if (!(strpos($discount->getCondition('condition_type'), 'promo_code') === 0)) {
+    return;
+  }
+  $discount->isNew = FALSE;
+  campaign_api_set_ck_group($discount);
+  // For some reason the form system flattens the rule definitions
+  // so here we re-create if flat.
+  if (!(is_array($discount->getCondition('rule')))) {
+    campaign_api_set_rule($discount);
+  }
+}
+
+/**
+ * Implements hook__discount_delete().
+ */
+function campaign_api__discount_delete($discount) {
+  // Only proceed if we have a promo_code_discount condition.
+  if (!(strpos($discount->getCondition('condition_type'), 'promo_code') === 0)) {
+    return;
+  }
+  $group = cool_keys_key_group_load($discount->getCondition('kgid'));
+  cool_keys_key_group_delete($group);
+  entity_defaults_rebuild(array('rules_config'));
+  // Delete any associated promo code variable.
+  if ($discount->getCondition('promo_code_short_name')) {
+    variable_del("promo_code_{$discount->getCondition(promo_code_coolkey_prefix)}");
+  }
+}
+
+
+function _discounts_conditions_promo_code_discount_execute($order, $discount) {
+  $cookie_exists = cookie_monster_cookie_exists($discount->getCondition('kgid'));
+  return $cookie_exists;
+}
+
+/**
+ * Implements hook_commerce_checkout_pane_info().
+ * Create a pane during checkout to display promo code entry form.
+ */
+function campaign_api_commerce_checkout_pane_info() {
+  $checkout_panes['promo_code'] = array(
+    'pane_id' => 'promo_code',
+    'title' => t('Enter a promotional discount code'),
+    'name' => t('Promo Code Entry Form'),
+    'review' => FALSE,
+    'base' => 'campaign_api_checkout_pane',
+    'file' => 'includes/campaign_api.checkout_pane.inc',
+    'module' => 'campaign_api',
+  );
+  return $checkout_panes;
+}
+
+/**
+ * Helper function for determining experiment paths.
+ * Returns the experiment id associated with a path
+ * if the path is used, otherwise returns FALSE.
+ * @param string $path
+ *   The path to check.
+ * @return
+ *   string experiment_id associated with the path (if exists)
+ *   otherwise FALSE.
+ */
+function campaign_api_experiment_path_exists($path) {
+  $experiments = variable_get('_experiments_experiments', array());
+  if (!empty($experiments)) {
+    foreach ($experiments as $id => $experiment) {
+      if ($experiment['path'] == $path) {
+        return $experiment['experiment_id'];
+      }
+    }
+  }
+  return FALSE;
+}
+
+/**
+ * Implements hook_html_head_alter().
+ * Inserts content experiment code if there is
+ * an experiment defined for the current path.
+ */
+function campaign_api_html_head_alter(&$vars) {
+  $path = current_path();
+  if ($experiment_id = campaign_api_experiment_path_exists($path)) {
+    $inline_code =
+      "\r\n<script>function utmx_section(){}function utmx(){}(function(){var\r\n" .
+      "k='". $experiment_id ."',d=document,l=d.location,c=d.cookie;\r\n" .
+      "if(l.search.indexOf('utm_expid='+k)>0)return;\r\n" .
+      "function f(n){if(c){var i=c.indexOf(n+'=');if(i>-1){var j=c.\r\n" .
+      "indexOf(';',i);return escape(c.substring(i+n.length+1,j<0?c.\r\n" .
+      "length:j))}}}var x=f('__utmx'),xx=f('__utmxx'),h=l.hash;d.write(\r\n" .
+      "'<sc'+'ript src=\"'+'http'+(l.protocol=='https:'?'s://ssl':\r\n" .
+      "'://www')+'.google-analytics.com/ga_exp.js?'+'utmxkey='+k+\r\n" .
+      "'&utmx='+(x?x:'')+'&utmxx='+(xx?xx:'')+'&utmxtime='+new Date().\r\n" .
+      "valueOf()+(h?'&utmxhash='+escape(h.substr(1)):'')+\r\n" .
+      "'\" type=\"text/javascript\" charset=\"utf-8\"><\/sc'+'ript>')})();\r\n" .
+      "</script><script>utmx('url','A/B');</script>\r\n";
+
+    $vars['_experiments_code'] = array(
+      '#type' => 'html_tag',
+      '#tag' => '!--Google Analytics Content Experiments code--',
+      '#value' => $inline_code,
+    );
+  }
+}
+
+/**
+ * Implements hook_google_analytics_et_api().
+ */
+function campaign_api_google_analytics_et_api() {
+  $info = array();
+  $events = variable_get('ga_events_ui_events', array());
+  foreach($events as $event) {
+    $info[] = array(
+      'event' => $event['jquery_event'],
+      'selector' => $event['dom_selector'],
+      'category' => $event['optional']['category'],
+      'action' => $event['optional']['action'],
+      'label' => $event['optional']['label'],
+      'value' => $event['optional']['value'],
+      'noninteraction' => ($event['optional']['non_interaction'] == 0) ? FALSE : TRUE,
+    );
+  }
+  return $info;
+}
+
+/**
+ * Returns a list of CoolKeys groups as an options list.
+ */
+function cool_keys_groups_list() {
+  $ck_groups = entity_load('cool_keys_key_group', FALSE, array(), TRUE);
+  $options = array();
+  foreach ($ck_groups as $ck_group) {
+    $options[$ck_group->kgid] = $ck_group->title;
+  }
+  return $options;
+}
+
+/**
+ * Access function for the cool_keys entity.
+ * @param string $op
+ * @param stdClass $coolkeys
+ * @param stdClass $account
+ * @param string $entity_type
+ */
+function campaign_api_key_group_access($op, $coolkeys = NULL, $account = NULL, $entity_type = NULL) {
+  if (!isset($account)) {
+    global $user;
+    $account = $user;
+  }
+  switch ($op) {
+    default: return user_access('administer coolkeys');
+  }
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function campaign_api_views_api($module = NULL, $api = NULL) {
+  return array("api" => "3.0");
+}

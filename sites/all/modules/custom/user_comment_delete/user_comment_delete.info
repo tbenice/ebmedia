@@ -1,0 +1,5 @@
+name = User Comment Delete
+description = "Allows users with permission to post comments to also delete those comments."
+package = other
+files[] = views/views_handler_field_user_comment_delete.inc
+core = "7.x"

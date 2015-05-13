@@ -1,0 +1,32 @@
+@CHARSET "UTF-8";
+
+.views-popup, #views-popup-wrapper {
+	position:absolute;
+}
+
+.views-popup {
+	display:none;
+}
+
+#views-popup-wrapper.display-override {
+	display:block;
+}
+
+.views-popup-container {
+	position:relative;
+}
+
+.views-slidein-processed {
+	position: relative;
+    height: 0px;
+    left: -10000px;
+}
+
+.views-fadein {
+	display: none;
+}
+	
+#views-popup-ajax-throbber-container {
+	z-index: 100;
+}
+	

@@ -1,0 +1,239 @@
+<?php
+/**
+ * @file
+ * Code for the Articles Support feature.
+ */
+
+/**
+ * Implements hook_common_support_import().
+ */
+function articles_support_common_support_import() {
+  return array(
+    'node_type',
+    'field_base',
+    'field_instance',
+    'image_style',
+    'variable',
+  );
+}
+
+/**
+ * Returns an image to use in the article teaser.
+ *
+ * @param $node
+ *   The article node to get and image for.
+ * @return $image
+ *   An image file render array or null if none can be found.
+ * 
+ */
+function articles_support_get_article_teaser_image($node, $view_mode = 'full') {
+  //if there is an article video, use that.
+  $image = array();
+  if (!empty($node->field_article_video)) {
+    $settings = array(
+      'label' => 'hidden',
+      'module' => 'video_embed_field',
+      'settings' => array(
+       'description' => 1,
+       'description_position' => 'bottom',
+       'image_style' => 'articles_teaser_square_switcher',
+      ),
+      'type' => 'video_embed_field_thumbnail',
+      'weight' => 9,
+    );
+    $image = field_view_value('node', $node, 'field_article_video', $node->field_article_video[LANGUAGE_NONE][0], $settings);
+  }
+  elseif (!empty($node->field_article_images)) { //else if there's a image, use that
+    $settings = array(
+      'label' => 'hidden',
+      'module' => 'image',
+      'settings' => array(
+        'image_style' => 'articles_teaser_square_switcher',
+      ),
+      'type' => 'image',
+      'weight' => 10,
+     );
+    $image = field_view_value('node', $node, 'field_article_images', $node->field_article_images[LANGUAGE_NONE][0], $settings);
+  }
+  return $image;
+}
+
+/**
+ * Returns an image to use in the article teaser.
+ *
+ * @param $node
+ *   The article node to get and image for.
+ * @return $image
+ *   An image file render array or null if none can be found.
+ *
+ */
+function articles_support_get_article_hero_image($node, $view_mode = 'full') {
+  //if there is an article video, use that.
+  $image = array();
+  if (!empty($node->field_article_video)) {
+    $settings = array(
+      'label' => 'hidden',
+      'module' => 'video_embed_field',
+      'settings' => array(
+        'description' => 1,
+        'description_position' => 'bottom',
+      ),
+      'type' => 'video_embed_field_embed_code',
+      'style' => 'wide',
+      'weight' => 9,
+    );
+    $image = field_view_value('node', $node, 'field_article_video', $node->field_article_video[LANGUAGE_NONE][0], $settings);
+  }
+  elseif (!empty($node->field_article_images)) { //else if there's a image, use that
+    $settings = array(
+      'label' => 'hidden',
+      'module' => 'image',
+      'type' => 'image',
+      'weight' => 10,
+    );
+    $image = field_view_value('node', $node, 'field_article_images', $node->field_article_images[LANGUAGE_NONE][0], $settings);
+  }
+  return $image;
+}
+
+function articles_support_preprocess_node(&$vars) {
+  // Proceed if this is a news article.
+  if ($vars['node']->type == 'news_article') {
+    // All view modes.
+    // Re Write the submitted date.
+    $stamp = $vars['node']->created;
+    $field_content = array(
+      '#prefix' => '<span class="submitted">',
+      '#markup' => date('F n, Y', $stamp),
+      '#suffix' => '</span>',
+    );
+    $vars['submitted'] = drupal_render($field_content);
+
+    // Proceed by view mode.
+    switch($vars['view_mode']) {
+      case "full":
+        // Gallery.
+        $gallery = views_get_view('articles');
+        $gallery->set_display('gallery');
+        $data = $gallery->preview('gallery', array($vars['node']->nid));
+        //count images + videos
+        if ($gallery->result) {
+          $items = count($gallery->result[0]->field_field_article_images) + count($gallery->result[0]->field_field_article_video);
+          if ($items > 1) {
+            $field_content = array(
+              '#theme' => 'block_wrapper',
+              '#data' => theme('show_hide', array('element' => $data, 'height' => 175)),
+              '#title' => $gallery->get_title(),
+            );
+            $vars['news_article_gallery'] = drupal_render($field_content);
+          }
+        }
+        // Video/image switcharoo full size.
+        $field_content = articles_support_get_article_hero_image($vars['node']);
+        if ($field_content['#theme'] == 'image_formatter') {
+          $field_content['#prefix'] = '<div class="node-content-container reactive image">';
+          $field_content['#suffix'] = '</div>';
+        }
+        else {
+          $field_content['#prefix'] = '<div class="node-content-container embedded-video-container">';
+          $field_content['#suffix'] = '</div>';
+        }
+        $vars['article_hero_image'] = drupal_render($field_content);
+        break;
+
+      default:
+        // Video/image switcharoo.
+        $field_content = articles_support_get_article_teaser_image($vars['node']);
+        $field_content['#prefix'] = '<div class="omega-narrow-up media-thumb-container"><div class="media-thumb-item image-item">';
+        $field_content['#suffix'] = '</div></div>';
+        $vars['teaser_image'] = drupal_render($field_content);
+
+        // Link to title as a clickable select link.
+        $field_content = array(
+          '#theme' => 'link',
+          '#path' => 'node/' . $vars['node']->nid,
+          '#text' => filter_xss($vars['node']->title),
+          '#options' => array(
+            'html' => FALSE,
+            'attributes' => array(
+              'class' => array(
+                'clickable-select',
+              ),
+            ),
+          ),
+          '#prefix' => '<h3 class="title">',
+          '#suffix' => '</h3>',
+        );
+        $vars['clickable_title_link'] = drupal_render($field_content);
+    }
+  }
+}
+
+/**
+ * Implements hook_ds_layout_info().
+ */
+function articles_support_ds_layout_info() {
+  $path = drupal_get_path('module', 'articles_support');
+
+  $layouts = array(
+    'articles_support_1' => array(
+      'label' => t('Article Layout V1'),
+      'path' => $path . '/layouts/articles_support_1',
+      'regions' => array(
+        'header' => t('Header'),
+        'row1' => t('Row 1'),
+        'row2' => t('Row 2'),
+        'row2_col1' => t('Row 2 Column 1'),
+        'row2_col2' => t('Row 2 Column 2'),
+        'row3' => t('Row 3'),
+        'row_mobile' => t('Row Mobile'),
+        'row_mobile_col1' => t('Row Mobile Column 1'),
+        'row_mobile_col2' => t('Row Mobile Column 2'),
+        'row5' => t('Row 5'),
+        'row_bottom' => t('Row Bottom'),
+      ),
+      'css' => TRUE,
+      // optional, form only applies to node form at this point.
+      'form' => TRUE,
+    ),
+    'articles_support_quote_1' => array(
+      'label' => t('Article Quote Layout V1'),
+      'path' => $path . '/layouts/articles_support_quote_1',
+      'regions' => array(
+        'quote_body' => t('Quote body'),
+        'quote_author' => t('Quote author'),
+        'quote_url' => t('Quote url'),
+      ),
+      'css' => TRUE,
+      // optional, form only applies to node form at this point.
+      'form' => TRUE,
+    ),
+    'articles_support_teaser_1' => array(
+      'label' => t('Article Teaser List V1'),
+      'path' => $path . '/layouts/articles_support_teaser_1',
+      'regions' => array(
+        'teaser_all' => t('All Sizes Content'),
+        'teaser_narrow_up' => t('Narrow-Up Content'),
+      ),
+      'css' => TRUE,
+      // optional, form only applies to node form at this point.
+      'form' => TRUE,
+    ),
+  );
+
+  return $layouts;
+}
+
+/**
+ * Implements hook_ctools_plugin_api().
+ */
+function articles_support_ctools_plugin_api($module = NULL, $api = NULL) {
+  return common_support_ctools_plugin_api($module, $api);
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function articles_support_views_api($module = NULL, $api = NULL) {
+  return common_support_views_api($module, $api);
+}

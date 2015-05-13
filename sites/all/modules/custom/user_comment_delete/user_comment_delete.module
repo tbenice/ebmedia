@@ -1,0 +1,56 @@
+<?php
+/**
+ * @file
+ * user_comment_modify.module
+ */
+
+ /**
+  * Implements hook_permission().
+  */
+function user_comment_delete_permission() {
+  $permissions = array();
+  $permissions['delete own comments'] = array(
+    'title' => t('Delete own comments'),
+  );
+  return $permissions;
+}
+
+ /**
+  * Implements hook_menu_alter().
+  */
+function user_comment_delete_menu_alter(&$items) {
+  $items['comment/%/delete']['access callback'] = 'user_comment_delete_comment_delete_access';
+  $items['comment/%/delete']['access arguments'] = array(1);
+}
+
+/*
+ *Checks to see if there are correct permissions for user to access comment delete, if the comment belongs to the user, and if there is a comment to be displayed.
+ */
+function user_comment_delete_comment_delete_access($cid) {
+  if (user_access('administer comments')) return TRUE; // Allow admin to delete any comments
+  global $user;
+  $comment = comment_load($cid);
+  if (!$comment) return FALSE; // Sanity check; disallow delete if comment doesn't exist
+  if ($comment->uid != $user->uid) return FALSE; // Disallow if user is not comment author
+  // Check if comment mode for this node type is flat
+  $node = node_load($comment->nid);
+  if (!$node) return FALSE; // Sanity check; disallow delete if node doesn't exist
+  $comment_mode = variable_get('comment_default_mode_' . $node->type, COMMENT_MODE_THREADED);
+  if ($comment_mode == COMMENT_MODE_FLAT) return TRUE;
+  return FALSE;
+}
+
+ /**
+  * Implements hook_views_data().
+  */
+function user_comment_delete_views_data() {
+    $data['comment']['ft_comment_delete'] = array(
+    'field' => array(
+      'label' => t('User Comment Delete'),
+      'title' => t('User Comment Delete'),
+      'help' => t('Allow users to delete their own comments'),
+      'handler' => 'views_handler_field_user_comment_delete',
+    ),
+  );
+  return $data;
+}

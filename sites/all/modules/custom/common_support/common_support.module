@@ -1,0 +1,363 @@
+<?php
+/**
+ * @file
+ * Code for the common support.
+ */
+
+/**
+ * Implements hook_modules_installed().
+ * Imports any assets that a module specifies should
+ * be imported when the module is installed.
+ */
+function common_support_modules_enabled($modules) {
+  module_load_include('inc', 'common_support', 'common_support.importers');
+  $implementations = module_implements('common_support_import');
+  foreach($modules as $module) {
+    if (in_array($module, $implementations)) {
+      $assets = module_invoke($module, 'common_support_import');
+      if (is_array($assets)) {
+        // Entities must be imported first.
+        $importables = array(
+          'node',
+          'commerce_product',
+        );
+        foreach($assets as $key => $asset) {
+          if (in_array($asset, $importables)) {
+            unset ($assets[$key]);
+            array_unshift($assets, $asset);
+          }
+        }
+        common_support_import($module, $assets);
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_modules_uninstalled.
+ * Deletes any assets that a module specifies should
+ * be disabled when the module is un-installed.
+ */
+function common_support_modules_uninstalled($modules) {
+  module_load_include('inc', 'common_support', 'common_support.importers');
+  $implementations = module_implements('common_support_delete_import');
+  foreach($modules as $module) {
+    if (in_array($module, $implementations)) {
+      $assets = module_invoke($module, 'common_support_delete_import');
+      if (is_array($assets)) {
+        common_support_delete_imports($assets);
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function common_support_menu() {
+  $items = array();
+  $items['page-not-found'] = array(
+    'type' => MENU_CALLBACK,
+    'title' => t('Page Not Found'),
+    'page callback' => 'common_support_404_page',
+    'access arguments' => array('access content'),
+    'file' => 'common_support.pages.inc',
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_entity_info_alter().
+ */
+function common_support_entity_info_alter(&$entity_info) {
+  $entity_info['node']['view modes']['teaser2'] = array(
+    'label' => t('Another teaser mode'),
+    'custom settings' => FALSE,
+  );
+  $entity_info['node']['view modes']['teaser3'] = array(
+    'label' => t('Another teaser mode 2'),
+    'custom settings' => FALSE,
+  );
+  $entity_info['node']['view modes']['teaser4'] = array(
+    'label' => t('Another teaser mode 3'),
+    'custom settings' => FALSE,
+  );
+  $entity_info['node']['view modes']['teaser5'] = array(
+    'label' => t('Another teaser mode 4'),
+    'custom settings' => FALSE,
+  );
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function common_support_form_system_site_information_settings_alter(&$form, $form_state) {
+  // Add custom 404 page settings
+  $form['error_page']['404_page'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('404 Page Content'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+  );
+  $form['error_page']['404_page']['common_support_404_headline'] = array(
+    '#type' => 'text_format',
+    '#title' => t('404 Page Headline'),
+    '#description' => t('This will be displayed above the 404 page body.'),
+    '#default_format' => 'filtered_html',
+    '#default_value' => common_support_default_404_page_headline(),
+  );
+  $form['error_page']['404_page']['common_support_404_body'] = array(
+    '#type' => 'text_format',
+    '#title' => t('404 Page Body'),
+    '#description' => t('This will be displayed below the 404 page headline.'),
+    '#default_format' => 'filtered_html',
+    '#default_value' => common_support_default_404_page_body(),
+  );
+}
+
+/**
+ * Returns default copy for the 404 page.
+ */
+function common_support_default_404_page_headline() {
+  $content = "<p>Sorry, that page can't be found on the site.</p>";
+  return $content;
+}
+
+/**
+ * Returns default copy for the 404 page.
+ */
+function common_support_default_404_page_body() {
+  $content = "<p>Sorry, we couldn't find the page you were looking for. Why not try and use the " . l(t('Search'), 'search'). " or " . l(t('Return to the Home Page'), '<front>') . ".</p>";
+  return $content;
+}
+
+/**
+ * Implements hook_node_view().
+ */
+function common_support_node_view($node, $view_mode, $langcode) {
+  // Can have share links on any node type.
+  $node->content['share_links'] = array(
+    '#theme' => 'share_links',
+    '#link_href' => url(drupal_get_path_alias('node/' . $node->nid),
+      array('absolute' => TRUE)),
+    '#nid' => $node->nid,
+  );
+}
+
+/**
+ * Implements hook_extra_fields().
+ */
+function common_support_field_extra_fields() {
+  // Get all node types with see tickets reference field.
+  $node_types = node_type_get_types();
+  $extra = array();
+  foreach ($node_types as $type => $type_object) {
+    $extra['node'][$type]['display']['share_links'] = array(
+      'label' => t('Addthis Social Share Links'),
+      'description' => t('Addthis social share links.'),
+      'weight' => 0,
+    );
+  }
+  return $extra;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function common_support_theme() {
+  $themes = array();
+  $themes['share_links'] = array(
+    'variables' => array('fb_scrape'=>false, 'nid'=>null, 'link_href' => null),
+    'file' => 'theme/common_support.theme.inc',
+  );
+  $themes['common_support_addthis'] = array(
+    'variables' => array('url' => null),
+    'file' => 'theme/common_support.theme.inc',
+  );
+  $themes['show_hide_more_link'] = array(
+    'variables' => array('more_text' => 'Show More', 'less_text' => 'Show Less', 'height' => null),
+    'file' => 'theme/common_support.theme.inc',
+  );
+  $themes['show_hide'] = array(
+    'variables' => array('element' => null, 'height' => null, 'more_text' => 'Show More', 'less_text' => 'Show Less'),
+    'file' => 'theme/common_support.theme.inc',
+  );
+  $themes['block_wrapper'] = array(
+    'variables' => array('data' => '', 'title' => ''),
+    'file' => 'theme/common_support.theme.inc',
+  );
+  $themes['view_embed'] = array(
+    'variables' => array('view' => '', 'display' => '', 'args' => array()),
+    'file' => 'theme/common_support.theme.inc',
+  );
+  $themes['embed_block'] = array(
+    'variables' => array('module' => null, 'delta' => null),
+    'file' => 'theme/common_support.theme.inc',
+  );
+  $themes['common_support_404_page'] = array(
+    'variables' => array(),
+    'path' => drupal_get_path('module', 'common_support') . '/theme',
+    'file' => 'common_support.theme.inc',
+    'template' => 'common-support-404-page',
+  );
+  return $themes;
+}
+
+/**
+ * Helper function orders a page scrape from facebook.
+ * @param $url
+ */
+function common_support_order_fb_scrape($url) {
+  // Order an fb scrape if desired.
+  $ch = curl_init("https://graph.facebook.com/?id={$url}&scrape=true");
+  curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+  curl_exec($ch);
+  curl_close($ch);
+}
+
+
+/**
+ * Implements hook_preprocess_node().
+ */
+function common_support_preprocess_node(&$vars) {
+  // Add theme hook suggestions for nodes based on view mode.
+  $vars['theme_hook_suggestions'][] = 'node__' . $vars['type'] . '__' . $vars['view_mode'];
+}
+
+/**
+ * Implements hook_preprocess_html().
+ */
+function common_support_preprocess_html(&$vars) {
+  $add_this_id = variable_get('social_share_addthis_publisher_id', 'ra-5519fea46a8a52a2');
+  if (isset($add_this_id)) {
+    // Inject the addthis js.
+    $addthis_js_url = "https://s7.addthis.com/js/300/addthis_widget.js#pubid=$add_this_id";
+    drupal_add_js($addthis_js_url, array('type' => 'external', 'scope' => 'header', 'group' => JS_LIBRARY, 'every_page' => TRUE, 'weight' => -10000));
+  }
+  // Set metatags variable if exists.
+  if (module_exists('metatag') && drupal_is_front_page()) {
+    $tags = array();
+    $instance = 'global:frontpage';
+    $build = metatag_metatags_view($instance, $tags);
+    render($build);
+  }
+}
+
+/**
+ * Checks a view element for a result.
+ * Views always returns html whether or not there are results.
+ * This sucks because it's hard to use render arrays nicely
+ * and check for results, and prevent wrappers etc from rendering
+ * in the template. This function unsets an views element if it
+ * has no results.
+ *
+ * @param array $element
+ *   The views render array to check.
+ */
+function common_support_view_check(&$element) {
+  if ($view = views_get_view($element['#view'])) {
+    $view->set_display($element['#display']);
+    $view->preview($element['#display'], (isset($element['#args']) ? $element['#args'] : array()));
+    if ($view->result) {
+      return;
+    }
+  }
+  $element = NULL;
+}
+
+/**
+ * Save a nodequeue queue.
+ * @see _fe_nodequeue_save_queue() in fe_nodequeue module.
+ *
+ * @param array $settings
+ *   A nodequeue settings array.
+ *
+ * @return array
+ *   The updated settings array.
+ */
+function common_support_nodequeue_save_queue(array $settings) {
+  // Convert roles from names to rids.
+  $roles = array_flip(user_roles());
+  foreach ((array) $settings['roles'] as $index => $role) {
+    // In case we are dealing with an old export with rids, don't do anything.
+    if (is_int($role)) {
+      continue;
+    }
+    $settings['roles'][$index] = $roles[$role];
+  }
+
+  // Simulate checkboxes.
+  $settings['roles'] = drupal_map_assoc($settings['roles']);
+  $settings['types'] = drupal_map_assoc($settings['types']);
+
+  // Simulate submitting.
+  $form_state = array();
+  $form_state['values'] = $settings;
+  module_load_include('inc', 'nodequeue', 'includes/nodequeue.admin');
+  nodequeue_edit_queue_form_submit(NULL, $form_state);
+
+  // Reset static caches.
+  // Note: we are currently using a variant of nodequeue_get_qid_map() that uses
+  // drupal_static() instead of a static variable to cache the results.
+  // @see http://drupal.org/node/1666556
+  drupal_static_reset('_fe_nodequeue_get_qid_map');
+
+  return $settings;
+}
+
+/**
+ * Return a map of queue name to qid values to aid in various lookups.
+ *
+ * This is based on nodequeue_get_qid_map() but uses drupal_static() instead of
+ * a static variable to cache the results.
+ *
+ * @see nodequeue_get_qid_map()
+ *
+ * @todo Add a link to the issue that converts this to drupal_static().
+ * @todo Create a followup issue to remove this once the above issue is fixed.
+ *   We will need to keep this in for a while to provide backwards compatibility
+ *   for people running old versions of Nodequeue.
+ *
+ * @see _fe_nodequeue_get_qid_map() in fe_nodequeue module.
+ *
+ * @return array
+ *   A array of qids, keyed by machine name.
+ */
+function common_support_nodequeue_get_qid_map() {
+  $map = &drupal_static(__FUNCTION__, array());
+  if (!$map) {
+    $result = db_query("SELECT qid, name FROM {nodequeue_queue}");
+    while ($get = $result->fetchObject()) {
+      $map[$get->name] = $get->qid;
+    }
+  }
+  return $map;
+}
+
+/**
+ * Implements hook_ctools_plugin_api().
+ */
+function common_support_ctools_plugin_api($module = NULL, $api = NULL) {
+  if ($module == "context" && $api == "context") {
+    return array("version" => "3");
+  }
+  if ($module == "field_group" && $api == "field_group") {
+    return array("version" => "1");
+  }
+  if ($module == "strongarm" && $api == "strongarm") {
+    return array("version" => "1");
+  }
+  if ($module == 'ds' && ($api == 'ds' || $api == 'plugins')) {
+    return array('version' => 1);
+  }
+  if ($module == 'field_group' && $api == 'field_group') {
+    return array('version' => 1);
+  }
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function common_support_views_api($module = NULL, $api = NULL) {
+  return array("api" => "3.0");
+}

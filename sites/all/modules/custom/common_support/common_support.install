@@ -1,0 +1,16 @@
+<?php
+/**
+ * @file
+ * common_support.install
+ */
+
+/**
+ * Implements hook_install().
+ */
+function common_support_install() {
+  // Set some variables.
+  variable_set('views_ui_show_advanced_column', 1);
+  variable_set('views_ui_always_live_preview', 0);
+  variable_set('views_ui_show_sql_query', 1);
+  variable_set('site_404', 'page-not-found');
+}

@@ -1,0 +1,7 @@
+core = 7.x
+dependencies[] = views
+description = Provides functionality to create views ajax popups on links
+name = "Views Popups"
+package = BTW
+scripts[] = js/views_popups.js
+stylesheets[all][] = css/views_popups.css

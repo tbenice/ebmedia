@@ -1,0 +1,17 @@
+<?php
+/**
+ * @file
+ * banner_support.install
+ */
+
+/**
+ * Implements hook_enable().
+ */
+function banner_support_enable() {
+  // Make sure that jquery update is at 1.7 at least.
+  $version = variable_get('jquery_update_jquery_version', '1.4');
+  if (!($version >= 1.7)) {
+    $version = '1.7';
+    variable_set('jquery_update_jquery_version', $version);
+  }
+}

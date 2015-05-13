@@ -1,0 +1,6 @@
+name = "Clickable Containers"
+description = "Makes a container for a link into the link itself!"
+package = Other
+core = 7.x
+scripts[] = js/clickable_containers.js
+stylesheets[all][] = css/clickable_containers.css

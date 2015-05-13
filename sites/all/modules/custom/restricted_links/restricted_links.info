@@ -1,0 +1,6 @@
+name = Restricted Links
+description = A module to restrict links by role and date.
+core = 7.x
+package = FanTorrent - Events
+dependencies[] = field
+dependencies[] = link

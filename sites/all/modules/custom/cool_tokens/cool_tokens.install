@@ -1,0 +1,242 @@
+<?php
+/**
+ * @file cool_tokens.install
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function cool_tokens_schema() {
+  $schema = array();
+  $schema['cool_tokens'] = array(
+    'description' => 'Stores Cool Tokens token information.',
+    'fields' => array(
+      'tkid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique token ID.',
+      ),
+      'title' => array(
+        'description' => 'The title for the token.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',      
+      ),
+      'description' => array(
+        'description' => 'A short description for this token.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'set_unlimited' => array(
+        'description' => "Defines if the token has a limited number of uses or not.",
+	// Default is set to limited.
+      	'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'max_uses' => array(
+        'description' => 'The number of times a token may be used.',
+        'type' => 'int',
+        'not null' => FALSE,
+        'default' => NULL,
+      ),
+     'active' => array(
+        'description' => "Defines if the token is active or not.",
+      	'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+     'type' => array(
+        'description' => 'The type of bundle.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'default' => NULL,
+      ),
+     'activates' => array(
+        'description' => 'The date and time when the group starts being active.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'default' => NULL,
+      ),
+     'set_expire' => array(
+        'description' => "Defines if the token expires or not.",
+	// Default is set to never expire.
+      	'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+     'expires' => array(
+        'description' => 'The date and time when the token expires.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'default' => NULL,
+      ),
+      'data' => array(
+        'description' => 'Additional data attached to a token',
+        'type' => 'blob',
+        'serialize' => TRUE,
+        'not null' => FALSE,
+      ),
+      'weight' => array(
+      	'type' => 'int',
+        'unsigned' => FALSE,
+        'size' => 'normal',
+        'not null' => FALSE,
+        'default' => 0,
+        'description' => "The weight of the group for ordering in lists.",
+      ),
+      'status' => array(
+        'type' => 'int', 
+        'not null' => TRUE,
+        // Set the default to ENTITY_CUSTOM without using the constant as it is
+        // not safe to use it at this point. 
+        'default' => 0x01, 
+        'size' => 'tiny', 
+        'description' => 'The exportable status of the entity.',
+      ), 
+      'module' => array(
+        'description' => 'The name of the providing module if the entity has been defined in code.', 
+        'type' => 'varchar', 
+        'length' => 255, 
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('tkid'),
+    'forign keys' => array(
+      'cool_tokens_type' => array(
+        'table' => 'cool_tokens_type',
+        'columns' => array('type' => 'type'),
+      ),
+    ),
+  );
+
+  $schema['cool_tokens_type'] = array(
+    'description' => 'Stores Cool Type Entity Bundle Info.',
+    'fields' => array(
+     'type' => array(
+        'description' => 'The type of bundle.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'default' => NULL,
+      ),
+     'label' => array(
+        'description' => 'The label for ui purposes.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'default' => NULL,
+      ),
+     'description' => array(
+        'description' => 'A short description for this token.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'status' => array(
+        'type' => 'int', 
+        'not null' => TRUE,
+        // Set the default to ENTITY_CUSTOM without using the constant as it is
+        // not safe to use it at this point. 
+        'default' => 0x01, 
+        'size' => 'tiny', 
+        'description' => 'The exportable status of the entity.',
+      ), 
+      'module' => array(
+        'description' => 'The name of the providing module if the entity has been defined in code.', 
+        'type' => 'varchar', 
+        'length' => 255, 
+        'not null' => FALSE,
+      ),
+      'data' => array(
+        'description' => 'Additional data attached to a token type',
+        'type' => 'blob',
+        'serialize' => TRUE,
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('type'),
+  );
+
+  $schema['cool_tokens_owner'] = array(
+    'description' => 'Stores Cool Token User Info.',
+    'fields' => array(
+      'tkid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'size' => 'normal',
+        'not null' => TRUE,
+        'description' => 'Unique token ID.',
+      ),
+     'uid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'size' => 'normal',
+        'not null' => FALSE,
+        'default' => NULL,
+        'description' => "The {users}.uid of the associated user.",
+      ),
+     'num_used' => array(
+        'description' => "The number of times a token has been used.",
+        'type' => 'int',
+        'not null' => FALSE,
+        'default' => 0,
+      ),
+     'max_uses' => array(
+        'description' => "The number of times a token may be used.",
+        'type' => 'int',
+        'not null' => FALSE,
+        'default' => 0,
+      ),
+     'assigned' => array(
+        'description' => 'The date and time when the owner was assigned the token.',
+        'type' => 'varchar',
+        'length' => 25,
+        'not null' => FALSE,
+        'default' => NULL,
+      ),
+      'data' => array(
+        'description' => 'Additional data attached to an ownership',
+        'type' => 'blob',
+        'serialize' => TRUE,
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('tkid', 'uid'),
+    'forign keys' => array(
+      'cool_tokens' => array(
+        'table' => 'cool_tokens',
+        'columns' => array('tkid' => 'tkid'),
+      ),
+    ),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_disable().
+ * Delete all tokens on disable. Have to do this
+ * since re-enabling and saving new tokens might duplicate
+ * file_managed and throw PDO errors.
+ */
+/*function cool_tokens_disable() {
+  // Delete all tokens.
+  $tokens = cool_tokens_token_load_multiple(FALSE, array(), TRUE);
+  foreach($tokens as $token) {
+    cool_tokens_token_delete($token);
+  }
+}*/
+
+
